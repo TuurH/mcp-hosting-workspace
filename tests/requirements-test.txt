@@ -1,5 +1,5 @@
 # Lightweight dependencies for the unit tests (no CUDA/PyTorch stack).
-pip>=26.2,<27
+pip>=26.3,<27
 mcp[cli]==2.3.0
 starlette>=1.10,<2
 uvicorn[standard]>=0.35,<1
