@@ -48,7 +48,7 @@ jobs:
           node tests/integration/admin_live.cjs
       - name: Upload UI previews
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: admin-ui-${{ github.event_name }}
           path: ui-artifacts/*.png
