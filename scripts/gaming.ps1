@@ -28,7 +28,7 @@ Set-Location (Get-ProjectRoot)
 
 function Invoke-DeployerCli {
     param([string[]] $CliArgs)
-    return Invoke-Native docker (@("exec", "hertogs-deployer", "python", "-m", "hertogs_platform.deployer.cli") + $CliArgs)
+    return Invoke-Native docker (@("exec", "mcp-hosting-deployer", "python", "-m", "mcp_hosting_platform.deployer.cli") + $CliArgs)
 }
 
 function Get-GamingState {
@@ -47,11 +47,11 @@ if ($Install) {
     # No time limit: the watcher runs for the whole session.
     $taskSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew `
         -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5)
-    Register-ScheduledTask -TaskName "Hertogs gaming watcher" -Action $action -Trigger $trigger `
-        -Settings $taskSettings -Description "Turns Hertogs gaming mode on when a listed game starts" -Force | Out-Null
+    Register-ScheduledTask -TaskName "MCP Hosting Workspace gaming watcher" -Action $action -Trigger $trigger `
+        -Settings $taskSettings -Description "Turns MCP Hosting Workspace gaming mode on when a listed game starts" -Force | Out-Null
     Write-Host "The gaming watcher starts at every logon (using $shellPath)."
     Write-Host "List your games on the admin page: Settings, Gaming mode (for example: eldenring.exe)."
-    Start-ScheduledTask -TaskName "Hertogs gaming watcher"
+    Start-ScheduledTask -TaskName "MCP Hosting Workspace gaming watcher"
     return
 }
 

@@ -8,9 +8,9 @@ import httpx
 import pytest
 from starlette.testclient import TestClient
 
-from hertogs_platform.files.app import build_mint_app, build_public_app, open_workspace_file
-from hertogs_platform.files.config import FilesSettings
-from hertogs_platform.files.store import LinkStore
+from mcp_hosting_platform.files.app import build_mint_app, build_public_app, open_workspace_file
+from mcp_hosting_platform.files.config import FilesSettings
+from mcp_hosting_platform.files.store import LinkStore
 
 MINT_TOKEN = "m" * 40
 

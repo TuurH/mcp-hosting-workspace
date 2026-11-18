@@ -10,7 +10,7 @@ function Check([string] $Label, [bool] $Condition) {
 }
 
 # Point the helpers at a temporary .env (never the real one).
-$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("hertogs-test-" + [guid]::NewGuid().ToString("N"))
+$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("mcp-hosting-test-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tmp | Out-Null
 $script:EnvFile = Join-Path $tmp ".env"
 
@@ -43,18 +43,18 @@ Check "existing empty value stays empty" ((Get-EnvValue "BACKUP_WORKSPACE_FOLDER
 
 # --- Retention -----------------------------------------------------------------
 $names = @(
-    "hertogs-20261005-033000", "hertogs-20261005-120000",   # two on the same day
-    "hertogs-20261004-033000", "hertogs-20261003-033000", "hertogs-20261002-033000",
-    "hertogs-20261001-033000", "hertogs-20260930-033000", "hertogs-20260929-033000",
-    "hertogs-20260928-033000", "hertogs-20260921-033000", "hertogs-20260914-033000",
-    "hertogs-20260907-033000", "hertogs-20260831-033000", "hertogs-20260824-033000",
+    "mcp-hosting-20261005-033000", "mcp-hosting-20261005-120000",   # two on the same day
+    "mcp-hosting-20261004-033000", "mcp-hosting-20261003-033000", "mcp-hosting-20261002-033000",
+    "mcp-hosting-20261001-033000", "mcp-hosting-20260930-033000", "mcp-hosting-20260929-033000",
+    "mcp-hosting-20260928-033000", "mcp-hosting-20260921-033000", "mcp-hosting-20260914-033000",
+    "mcp-hosting-20260907-033000", "mcp-hosting-20260831-033000", "mcp-hosting-20260824-033000",
     "not-a-backup"
 )
 $keep = Select-BackupsToKeep -Names $names -Daily 7 -Weekly 4
-Check "newest of each of 7 days kept" (($keep | Where-Object { $_ -ge "hertogs-20260929" }).Count -eq 7)
-Check "only newest per day" (($keep -contains "hertogs-20261005-120000") -and -not ($keep -contains "hertogs-20261005-033000"))
-Check "4 weekly backups older than the dailies" (($keep | Where-Object { $_ -lt "hertogs-20260929" }).Count -eq 4)
-Check "oldest weekly dropped" (-not ($keep -contains "hertogs-20260824-033000"))
+Check "newest of each of 7 days kept" (($keep | Where-Object { $_ -ge "mcp-hosting-20260929" }).Count -eq 7)
+Check "only newest per day" (($keep -contains "mcp-hosting-20261005-120000") -and -not ($keep -contains "mcp-hosting-20261005-033000"))
+Check "4 weekly backups older than the dailies" (($keep | Where-Object { $_ -lt "mcp-hosting-20260929" }).Count -eq 4)
+Check "oldest weekly dropped" (-not ($keep -contains "mcp-hosting-20260824-033000"))
 Check "non-backup names ignored" (-not ($keep -contains "not-a-backup"))
 Check "zero weekly keeps only dailies" ((Select-BackupsToKeep -Names $names -Daily 2 -Weekly 0).Count -eq 2)
 
@@ -77,7 +77,7 @@ function Invoke-Native {
     return [pscustomobject]@{ ExitCode = 0; Output = @() }
 }
 Remove-ManagedAppContainers
-Check "restore finds dynamic containers by platform label" ($script:removeCalls[0] -eq "ps -aq --filter label=be.hertogs.app")
+Check "restore finds dynamic containers by platform label" ($script:removeCalls[0] -eq "ps -aq --filter label=mcp-hosting-workspace.app")
 Check "restore removes workers and helpers before replacing data" (($script:removeCalls -contains "container rm --force worker-id") -and ($script:removeCalls -contains "container rm --force gateway-id"))
 Check "restore verifies no app containers remain" ($script:listCalls -eq 2)
 function Invoke-Native { param([string] $File, [string[]] $Arguments); return [pscustomobject]@{ExitCode=1;Output=@()} }

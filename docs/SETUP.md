@@ -86,9 +86,11 @@ Apply an upgrade when no build, release or export is running: restarting the dep
 
 ### Moving an existing installation to a new checkout
 
-Back up the current installation first. Copy its `.env` privately to the new checkout and keep the existing named Docker volumes. The Compose project, service names, volume names and application labels retain their existing identifiers. Run `docker compose ps` from the new checkout to confirm Compose sees the same stack before applying the normal upgrade above. Reinstall any Windows scheduled tasks you use from the new checkout so they point to its scripts.
+Back up the current installation first. For installations already using the `mcp-hosting-workspace` Compose project, copy `.env` privately to the new checkout and keep the existing named Docker volumes. Run `docker compose ps` from the new checkout to confirm it sees the existing containers before upgrading. Reinstall any Windows scheduled tasks you use from the new checkout so they point to its scripts.
 
-To preserve existing MCP connections, retain your MCP hostname, `/mcp` endpoint, and OAuth settings. Set `MCP_SERVER_NAME` to your previous display name if you want clients to continue seeing it. A rebuild can run before maintenance; recreating the workspace interrupts active connections and jobs. Returning to an earlier version requires compatible database state and a matching `.env` backup.
+Installations under an earlier Compose project name need a migration. Keep the old checkout and back up with its matching scripts. Bring up the new project on a separate Docker engine for rehearsal because both versions use the same default subnet ranges. Move selected workspace files and application data through file and app exports, redeploy apps, and review the new grants before switching routes. Restore whole-stack backups with the checkout that created them. Apps that inspect the AI caller header should use `x-mcp-hosting-caller`.
+
+To preserve existing MCP connections, retain your MCP hostname, `/mcp` endpoint, and OAuth settings. Set `MCP_SERVER_NAME` to your previous display name if you want clients to continue seeing it. Recreating the workspace interrupts active connections and jobs. Returning to an earlier version requires compatible database state and a matching `.env` backup.
 
 ## 3. Connect the AI clients
 
@@ -137,12 +139,12 @@ Backups include labelled platform/app/source volumes and retained immutable runt
 
 For NAS storage use a UNC path (`\\server\share\folder`). The script stages locally, copies under a partial name and checks hashes before publishing the complete folder. Keep room for archives and immutable images. Retention defaults to 7 daily and 4 weekly backups.
 
-Inspect `last-backup.json` in the destination and `%LOCALAPPDATA%\HertogsBackup`; scheduled logs are under its `logs` subfolder. `ok-with-warnings`, `empty`, `error` and `ok-with-errors` need review. A previous database snapshot or files changing during copying can make recovery incomplete even when archives exist.
+Inspect `last-backup.json` in the destination and `%LOCALAPPDATA%\McpHostingWorkspaceBackup`; scheduled logs are under its `logs` subfolder. `ok-with-warnings`, `empty`, `error` and `ok-with-errors` need review. A previous database snapshot or files changing during copying can make recovery incomplete even when archives exist.
 
 Restore requires the original protected `.env` and encryption key. Copy a NAS backup to a local drive, preserve a backup of current state, and run:
 
 ```powershell
-.\scripts\restore.ps1 -Backup "C:\Backups\hertogs-YYYYMMDD-HHMMSS"
+.\scripts\restore.ps1 -Backup "C:\Backups\mcp-hosting-YYYYMMDD-HHMMSS"
 # Add -IncludeWorkspaceFolders if you also want saved apps/projects overlaid.
 ```
 

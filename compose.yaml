@@ -1,4 +1,4 @@
-name: hertogs-ai-workspace
+name: mcp-hosting-workspace
 
 # Network layout (see docs/DESIGN.md):
 #   edge-mcp      cloudflared <-> workspace   (internet + home network for the AI shell)
@@ -35,8 +35,8 @@ services:
         CUDA_BASE_IMAGE: ${CUDA_BASE_IMAGE:-nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04}
         AI_UID: "1000"
         AI_GID: "1000"
-    image: hertogs/ai-workspace-mcp:local
-    container_name: hertogs-ai-workspace
+    image: mcp-hosting-workspace/ai-workspace-mcp:local
+    container_name: mcp-hosting-workspace
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
@@ -116,10 +116,10 @@ services:
     <<: *hardened
     build:
       context: platform
-    image: hertogs/platform:local
-    container_name: hertogs-files
+    image: mcp-hosting-workspace/platform:local
+    container_name: mcp-hosting-files
     restart: unless-stopped
-    command: ["python", "-m", "hertogs_platform.files"]
+    command: ["python", "-m", "mcp_hosting_platform.files"]
     user: "1000:1000"
     environment:
       WORKSPACE_ROOT: /workspace
@@ -151,7 +151,7 @@ services:
   # One-shot at every start: gives the platform volumes to uid 1000 (the deployer
   # and admin user), also when another container created a volume first.
   volume-init:
-    image: hertogs/platform:local
+    image: mcp-hosting-workspace/platform:local
     build:
       context: platform
     user: "0:0"
@@ -174,10 +174,10 @@ services:
   # socket on the admin-socket volume).
   deployer:
     <<: *hardened
-    image: hertogs/platform:local
-    container_name: hertogs-deployer
+    image: mcp-hosting-workspace/platform:local
+    container_name: mcp-hosting-deployer
     restart: unless-stopped
-    command: ["python", "-m", "hertogs_platform.deployer"]
+    command: ["python", "-m", "mcp_hosting_platform.deployer"]
     user: "1000:1000"
     # Docker Desktop's socket is root:root 0660 inside containers.
     group_add: ["${DOCKER_SOCKET_GID:-0}"]
@@ -187,12 +187,12 @@ services:
       DEPLOYER_API_TOKEN: ${DEPLOYER_API_TOKEN:-}
       DEPLOYER_SECRETS_KEY: ${DEPLOYER_SECRETS_KEY:-}
       ADMIN_URL: https://admin.${PLATFORM_DOMAIN:-example.com}
-      WORKSPACE_CONTAINER: hertogs-ai-workspace
-      HELPER_IMAGE: hertogs/platform:local
+      WORKSPACE_CONTAINER: mcp-hosting-workspace
+      HELPER_IMAGE: mcp-hosting-workspace/platform:local
       RESERVED_APP_NAMES: ${RESERVED_APP_NAMES:-}
       # Build workers hand their image to the deployer through this volume: each
       # worker gets one directory of it, the deployer reads the result directly.
-      BUILD_SCRATCH_VOLUME: hertogs-build-scratch
+      BUILD_SCRATCH_VOLUME: mcp-hosting-build-scratch
       BUILD_SCRATCH_DIR: /scratch
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -203,11 +203,11 @@ services:
       - pomerium-config:/pomerium
       - static-logs:/logs:ro
       - control:/control
-      - admin-socket:/run/hertogs
+      - admin-socket:/run/mcp-hosting
     tmpfs:
       - /tmp:size=256m
     labels:
-      be.hertogs.backup.pre: "python -m hertogs_platform.deployer.cli snapshot-db"
+      mcp-hosting-workspace.backup.pre: "python -m mcp_hosting_platform.deployer.cli snapshot-db"
     mem_limit: 512m
     memswap_limit: 512m
     # Two cores: one may be busy streaming a large image while the other answers pages.
@@ -231,7 +231,7 @@ services:
   # Envoy binary at startup.
   pomerium:
     image: pomerium/pomerium:v0.34.1
-    container_name: hertogs-pomerium
+    container_name: mcp-hosting-pomerium
     restart: unless-stopped
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -260,7 +260,7 @@ services:
   # Serves every static app's files; only Pomerium and the deployer reach it.
   static:
     image: caddy:2.11.9-alpine
-    container_name: hertogs-static
+    container_name: mcp-hosting-static
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
@@ -287,10 +287,10 @@ services:
   # admin.example.com, behind Cloudflare Access (owner only).
   admin:
     <<: *hardened
-    image: hertogs/platform:local
-    container_name: hertogs-admin
+    image: mcp-hosting-workspace/platform:local
+    container_name: mcp-hosting-admin
     restart: unless-stopped
-    command: ["python", "-m", "hertogs_platform.admin"]
+    command: ["python", "-m", "mcp_hosting_platform.admin"]
     user: "1000:1000"
     environment:
       PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-example.com}
@@ -302,7 +302,7 @@ services:
       ADMIN_MAX_UPLOAD_GB: ${ADMIN_MAX_UPLOAD_GB:-50}
       WORKSPACE_ROOT: /workspace
     volumes:
-      - admin-socket:/run/hertogs
+      - admin-socket:/run/mcp-hosting
       # The file manager: the admin page can read and change everything in /workspace.
       - workspace-data:/workspace
     tmpfs:
@@ -325,7 +325,7 @@ services:
   cloudflared:
     <<: *hardened
     image: cloudflare/cloudflared:2026.11.0
-    container_name: hertogs-ai-workspace-tunnel
+    container_name: mcp-hosting-workspace-tunnel
     restart: unless-stopped
     # Metrics/diagnostics only on loopback: the other containers on the edge
     # networks must not reach them.
@@ -345,37 +345,37 @@ services:
 volumes:
   workspace-secrets:
     # Decrypted delivery cache, recreated from the encrypted deployer database.
-    name: hertogs-workspace-secrets
+    name: mcp-hosting-workspace-secrets
   workspace-data:
-    name: hertogs-ai-workspace-data
+    name: mcp-hosting-workspace-data
   files-data:
     # Not backed up: download links expire within a day.
-    name: hertogs-files-data
+    name: mcp-hosting-files-data
   deployer-data:
-    name: hertogs-deployer-data
+    name: mcp-hosting-deployer-data
     labels:
-      be.hertogs.backup: "true"
+      mcp-hosting-workspace.backup: "true"
   build-scratch:
     # Not backed up: holds an image only while its build is being imported.
-    name: hertogs-build-scratch
+    name: mcp-hosting-build-scratch
   sites:
-    name: hertogs-sites
+    name: mcp-hosting-sites
     labels:
-      be.hertogs.backup: "true"
+      mcp-hosting-workspace.backup: "true"
   pomerium-config:
-    name: hertogs-pomerium-config
+    name: mcp-hosting-pomerium-config
   pomerium-data:
-    name: hertogs-pomerium-data
+    name: mcp-hosting-pomerium-data
   static-logs:
-    name: hertogs-static-logs
+    name: mcp-hosting-static-logs
   control:
-    name: hertogs-control
+    name: mcp-hosting-control
   admin-socket:
-    name: hertogs-admin-socket
+    name: mcp-hosting-admin-socket
 
 networks:
   edge-mcp:
-    name: hertogs-edge-mcp
+    name: mcp-hosting-edge-mcp
     driver: bridge
     ipam:
       config:
@@ -384,7 +384,7 @@ networks:
           gateway: 10.204.1.1
           ip_range: 10.204.1.8/29
   edge-files:
-    name: hertogs-edge-files
+    name: mcp-hosting-edge-files
     driver: bridge
     internal: true
     ipam:
@@ -393,7 +393,7 @@ networks:
           gateway: 10.204.2.1
           ip_range: 10.204.2.8/29
   files-mint:
-    name: hertogs-files-mint
+    name: mcp-hosting-files-mint
     driver: bridge
     internal: true
     ipam:
@@ -401,7 +401,7 @@ networks:
         - subnet: 10.204.5.0/28
           gateway: 10.204.5.1
   edge-admin:
-    name: hertogs-edge-admin
+    name: mcp-hosting-edge-admin
     driver: bridge
     ipam:
       config:
@@ -409,7 +409,7 @@ networks:
           gateway: 10.204.3.1
           ip_range: 10.204.3.8/29
   edge-proxy:
-    name: hertogs-edge-proxy
+    name: mcp-hosting-edge-proxy
     driver: bridge
     ipam:
       config:
@@ -417,10 +417,10 @@ networks:
           gateway: 10.204.4.1
           ip_range: 10.204.4.8/29
   deployer-api:
-    name: hertogs-deployer-api
+    name: mcp-hosting-deployer-api
     driver: bridge
     internal: true
   platform:
-    name: hertogs-platform
+    name: mcp-hosting-platform
     driver: bridge
     internal: true

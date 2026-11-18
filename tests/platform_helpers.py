@@ -8,13 +8,13 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet
 
-from hertogs_platform.deployer.config import DeployerSettings
-from hertogs_platform.deployer.core import Platform
-from hertogs_platform.deployer.db import Database
-from hertogs_platform.deployer.gaming import Gaming
-from hertogs_platform.deployer.sites import Sites
+from mcp_hosting_platform.deployer.config import DeployerSettings
+from mcp_hosting_platform.deployer.core import Platform
+from mcp_hosting_platform.deployer.db import Database
+from mcp_hosting_platform.deployer.gaming import Gaming
+from mcp_hosting_platform.deployer.sites import Sites
 
-OWNER = "owner@hertogs.test"
+OWNER = "owner@mcp-hosting.test"
 API_TOKEN = "deployer-test-token-" + "y" * 32
 
 

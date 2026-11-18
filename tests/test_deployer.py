@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from hertogs_platform.deployer import pomerium
-from hertogs_platform.deployer.api import build_full_app, build_narrow_app
-from hertogs_platform.deployer.core import PlatformError, RouteError
-from hertogs_platform.deployer.db import Database, recover_from_snapshot
+from mcp_hosting_platform.deployer import pomerium
+from mcp_hosting_platform.deployer.api import build_full_app, build_narrow_app
+from mcp_hosting_platform.deployer.core import PlatformError, RouteError
+from mcp_hosting_platform.deployer.db import Database, recover_from_snapshot
 from platform_helpers import API_TOKEN, OWNER, make_platform, site_archive
 
 
@@ -90,9 +90,9 @@ def test_dev_redeploy_goes_live_and_keeps_previous(tmp_path):
 
 def test_shared_app_update_needs_release(tmp_path):
     platform, _ = make_platform(tmp_path)
-    platform.add_person("friend@hertogs.test", "Friend", OWNER)
+    platform.add_person("friend@mcp-hosting.test", "Friend", OWNER)
     first = deploy(platform, tmp_path, "blog", "v1")
-    platform.set_stage("blog", "shared", ["friend@hertogs.test"], [], OWNER)
+    platform.set_stage("blog", "shared", ["friend@mcp-hosting.test"], [], OWNER)
 
     second = deploy(platform, tmp_path, "blog", "v2")
     assert second["outcome"] == "pending"
@@ -101,7 +101,7 @@ def test_shared_app_update_needs_release(tmp_path):
     routes = routes_by_host(platform)
     assert routes["next-blog.example.com"]["policy"] == [{"allow": {"or": [{"email": {"is": OWNER}}]}}]
     emails = {rule["email"]["is"] for rule in routes["blog.example.com"]["policy"][0]["allow"]["or"]}
-    assert emails == {OWNER, "friend@hertogs.test"}
+    assert emails == {OWNER, "friend@mcp-hosting.test"}
 
     # The pending version itself waits on the app page: no separate request is filed.
     assert platform.db.requests(status="pending", app="blog") == []
@@ -162,7 +162,7 @@ def test_ai_cannot_file_release_requests_or_junk(tmp_path):
     deploy(platform, tmp_path, "blog", "v1")
     with pytest.raises(PlatformError):
         platform.file_request("blog", "release", {"version": "safe, already reviewed"}, "")
-    for payload in ({"stage": "shared", "people": "a@hertogs.test"}, {"stage": "shared", "people": {"a": 1}},
+    for payload in ({"stage": "shared", "people": "a@mcp-hosting.test"}, {"stage": "shared", "people": {"a": 1}},
                     {"stage": "shared", "groups": "family"}, {"stage": "shared", "people": [1]}):
         with pytest.raises(PlatformError):
             platform.file_request("blog", "stage", payload, "")
@@ -208,14 +208,14 @@ def test_public_route_and_offline(tmp_path):
 
 def test_group_members_get_access(tmp_path):
     platform, _ = make_platform(tmp_path)
-    platform.add_person("a@hertogs.test", "", OWNER)
+    platform.add_person("a@mcp-hosting.test", "", OWNER)
     platform.add_group("family", OWNER)
     deploy(platform, tmp_path, "photos", "x")
     platform.set_stage("photos", "shared", [], ["family"], OWNER)
-    platform.set_group_member("family", "a@hertogs.test", True, OWNER)
+    platform.set_group_member("family", "a@mcp-hosting.test", True, OWNER)
     emails = {rule["email"]["is"] for rule in routes_by_host(platform)["photos.example.com"]["policy"][0]["allow"]["or"]}
-    assert emails == {OWNER, "a@hertogs.test"}
-    platform.remove_person("a@hertogs.test", OWNER)
+    assert emails == {OWNER, "a@mcp-hosting.test"}
+    platform.remove_person("a@mcp-hosting.test", OWNER)
     emails = {rule["email"]["is"] for rule in routes_by_host(platform)["photos.example.com"]["policy"][0]["allow"]["or"]}
     assert emails == {OWNER}
 
@@ -334,7 +334,7 @@ def test_request_validation_and_limit(tmp_path):
 
 
 def test_ai_log_view_hides_visitors_from_before_dev(tmp_path):
-    from hertogs_platform.deployer.api import _logs
+    from mcp_hosting_platform.deployer.api import _logs
 
     platform, _ = make_platform(tmp_path)
     deploy(platform, tmp_path, "blog", "v1")
@@ -416,17 +416,17 @@ def test_narrowing_is_never_undone(tmp_path, monkeypatch):
 
 def test_people_who_leave_stay_removed_when_adding_others_fails(tmp_path, monkeypatch):
     platform, _ = make_platform(tmp_path)
-    for email in ("a@hertogs.test", "b@hertogs.test", "c@hertogs.test"):
+    for email in ("a@mcp-hosting.test", "b@mcp-hosting.test", "c@mcp-hosting.test"):
         platform.add_person(email, email[0], OWNER)
     deploy(platform, tmp_path, "blog", "v1")
-    platform.set_stage("blog", "shared", ["a@hertogs.test", "b@hertogs.test"], [], OWNER)
+    platform.set_stage("blog", "shared", ["a@mcp-hosting.test", "b@mcp-hosting.test"], [], OWNER)
     monkeypatch.setattr(pomerium, "probe", failing_probe)
     with pytest.raises(RouteError) as caught:
-        platform.set_stage("blog", "shared", ["b@hertogs.test", "c@hertogs.test"], [], OWNER)
+        platform.set_stage("blog", "shared", ["b@mcp-hosting.test", "c@mcp-hosting.test"], [], OWNER)
     assert caught.value.undone
-    assert platform.db.app("blog")["people"] == ["b@hertogs.test"]
+    assert platform.db.app("blog")["people"] == ["b@mcp-hosting.test"]
     emails = {rule["email"]["is"] for rule in routes_by_host(platform)["blog.example.com"]["policy"][0]["allow"]["or"]}
-    assert emails == {OWNER, "b@hertogs.test"}
+    assert emails == {OWNER, "b@mcp-hosting.test"}
 
 
 def test_reconcile_keeps_the_narrower_routes_when_the_check_fails(tmp_path, monkeypatch):
@@ -651,17 +651,17 @@ def test_holding_back_applies_to_every_route_write(tmp_path, monkeypatch):
 
 def test_holding_back_a_host_keeps_removals_on_that_host(tmp_path, monkeypatch):
     platform, _ = make_platform(tmp_path)
-    for email in ("a@hertogs.test", "b@hertogs.test", "c@hertogs.test"):
+    for email in ("a@mcp-hosting.test", "b@mcp-hosting.test", "c@mcp-hosting.test"):
         platform.add_person(email, email[0], OWNER)
     deploy(platform, tmp_path, "blog", "v1")
-    platform.set_stage("blog", "shared", ["a@hertogs.test", "b@hertogs.test"], [], OWNER)
+    platform.set_stage("blog", "shared", ["a@mcp-hosting.test", "b@mcp-hosting.test"], [], OWNER)
     with platform.db.tx() as conn:  # the database also admits c, b was removed meanwhile
-        conn.execute("DELETE FROM app_access WHERE principal = 'b@hertogs.test'")
-        conn.execute("INSERT INTO app_access (app, principal_type, principal) VALUES ('blog', 'person', 'c@hertogs.test')")
+        conn.execute("DELETE FROM app_access WHERE principal = 'b@mcp-hosting.test'")
+        conn.execute("INSERT INTO app_access (app, principal_type, principal) VALUES ('blog', 'person', 'c@mcp-hosting.test')")
     monkeypatch.setattr(pomerium, "probe", failing_probe)
     platform.apply_routes("reconcile")
     emails = {rule["email"]["is"] for rule in routes_by_host(platform)["blog.example.com"]["policy"][0]["allow"]["or"]}
-    assert emails == {OWNER, "a@hertogs.test"}  # b removed, c held back
+    assert emails == {OWNER, "a@mcp-hosting.test"}  # b removed, c held back
 
 
 def test_a_restart_during_a_check_falls_back_to_the_checked_routes(tmp_path):
@@ -679,7 +679,7 @@ def test_a_restart_during_a_check_falls_back_to_the_checked_routes(tmp_path):
 
 def test_an_owner_narrowing_of_a_held_host_applies_at_once(tmp_path, monkeypatch):
     platform, _ = make_platform(tmp_path)
-    platform.add_person("a@hertogs.test", "A", OWNER)
+    platform.add_person("a@mcp-hosting.test", "A", OWNER)
     deploy(platform, tmp_path, "blog", "v1")
     with platform.db.tx() as conn:  # a database wider than Pomerium
         conn.execute("UPDATE apps SET stage = 'public' WHERE name = 'blog'")
@@ -687,9 +687,9 @@ def test_an_owner_narrowing_of_a_held_host_applies_at_once(tmp_path, monkeypatch
     platform.apply_routes("reconcile")  # held back
     assert "blog.example.com" in platform._held
     monkeypatch.setattr(pomerium, "probe", lambda *a, **k: ([], True))
-    platform.set_stage("blog", "shared", ["a@hertogs.test"], [], OWNER)  # less than Public: checked now
+    platform.set_stage("blog", "shared", ["a@mcp-hosting.test"], [], OWNER)  # less than Public: checked now
     emails = {rule["email"]["is"] for rule in routes_by_host(platform)["blog.example.com"]["policy"][0]["allow"]["or"]}
-    assert emails == {OWNER, "a@hertogs.test"}
+    assert emails == {OWNER, "a@mcp-hosting.test"}
     assert "blog.example.com" not in platform._held and platform.route_problems == []
 
 
@@ -709,11 +709,11 @@ def test_without_widening_keeps_only_the_narrower_route_per_host():
 
 def test_people_edit_whose_additions_fail_stays_pending(tmp_path, monkeypatch):
     platform, _ = make_platform(tmp_path)
-    for email in ("a@hertogs.test", "b@hertogs.test", "c@hertogs.test"):
+    for email in ("a@mcp-hosting.test", "b@mcp-hosting.test", "c@mcp-hosting.test"):
         platform.add_person(email, email[0], OWNER)
     deploy(platform, tmp_path, "blog", "v1")
-    platform.set_stage("blog", "shared", ["a@hertogs.test", "b@hertogs.test"], [], OWNER)
-    request = platform.file_request("blog", "stage", {"stage": "shared", "people": ["a@hertogs.test", "c@hertogs.test"]}, "")
+    platform.set_stage("blog", "shared", ["a@mcp-hosting.test", "b@mcp-hosting.test"], [], OWNER)
+    request = platform.file_request("blog", "stage", {"stage": "shared", "people": ["a@mcp-hosting.test", "c@mcp-hosting.test"]}, "")
 
     def full_disk(*args, **kwargs):
         raise OSError(28, "No space left on device")
@@ -721,7 +721,7 @@ def test_people_edit_whose_additions_fail_stays_pending(tmp_path, monkeypatch):
     with pytest.raises(RouteError) as caught:
         platform.decide_request(request["id"], True, OWNER)
     assert caught.value.undone  # c was not added
-    assert platform.db.app("blog")["people"] == ["a@hertogs.test"]  # b's removal is kept
+    assert platform.db.app("blog")["people"] == ["a@mcp-hosting.test"]  # b's removal is kept
     assert platform.db.request(request["id"])["status"] == "pending"
 
 
@@ -856,7 +856,7 @@ def test_unchecked_writes_never_widen(tmp_path, monkeypatch):
 
 def test_a_failed_owner_widening_keeps_other_hosts_held(tmp_path, monkeypatch):
     platform, _ = make_platform(tmp_path)
-    platform.add_person("a@hertogs.test", "A", OWNER)
+    platform.add_person("a@mcp-hosting.test", "A", OWNER)
     deploy(platform, tmp_path, "blog", "v1")
     deploy(platform, tmp_path, "shop", "s")
     with platform.db.tx() as conn:
@@ -865,7 +865,7 @@ def test_a_failed_owner_widening_keeps_other_hosts_held(tmp_path, monkeypatch):
     platform.apply_routes("reconcile")
     platform._held = {host: (0.0, why) for host, (_, why) in platform._held.items()}  # the hold expires
     with pytest.raises(RouteError):
-        platform.set_stage("shop", "shared", ["a@hertogs.test"], [], OWNER)  # fails, is undone
+        platform.set_stage("shop", "shared", ["a@mcp-hosting.test"], [], OWNER)  # fails, is undone
     assert platform.db.app("shop")["stage"] == "dev"
     assert "allow_public_unauthenticated_access" not in routes_by_host(platform)["blog.example.com"]
     platform._last_probe -= 601
@@ -875,24 +875,24 @@ def test_a_failed_owner_widening_keeps_other_hosts_held(tmp_path, monkeypatch):
 
 def test_an_owner_change_to_a_held_host_is_checked_now(tmp_path, monkeypatch):
     platform, _ = make_platform(tmp_path)
-    for email in ("a@hertogs.test", "b@hertogs.test", "c@hertogs.test"):
+    for email in ("a@mcp-hosting.test", "b@mcp-hosting.test", "c@mcp-hosting.test"):
         platform.add_person(email, email[0], OWNER)
     deploy(platform, tmp_path, "blog", "v1")
-    platform.set_stage("blog", "shared", ["a@hertogs.test"], [], OWNER)
+    platform.set_stage("blog", "shared", ["a@mcp-hosting.test"], [], OWNER)
     with platform.db.tx() as conn:  # the database also admits c
-        conn.execute("INSERT INTO app_access (app, principal_type, principal) VALUES ('blog', 'person', 'c@hertogs.test')")
+        conn.execute("INSERT INTO app_access (app, principal_type, principal) VALUES ('blog', 'person', 'c@mcp-hosting.test')")
     monkeypatch.setattr(pomerium, "probe", failing_probe)
     platform.apply_routes("reconcile")  # c held back
     with pytest.raises(RouteError) as caught:
-        platform.set_stage("blog", "shared", ["a@hertogs.test", "b@hertogs.test", "c@hertogs.test"], [], OWNER)
+        platform.set_stage("blog", "shared", ["a@mcp-hosting.test", "b@mcp-hosting.test", "c@mcp-hosting.test"], [], OWNER)
     assert caught.value.undone
     monkeypatch.setattr(pomerium, "probe", lambda *a, **k: ([], True))
-    platform.set_stage("blog", "shared", ["a@hertogs.test", "b@hertogs.test", "c@hertogs.test"], [], OWNER)
+    platform.set_stage("blog", "shared", ["a@mcp-hosting.test", "b@mcp-hosting.test", "c@mcp-hosting.test"], [], OWNER)
     emails = {rule["email"]["is"] for rule in routes_by_host(platform)["blog.example.com"]["policy"][0]["allow"]["or"]}
-    assert emails == {OWNER, "a@hertogs.test", "b@hertogs.test", "c@hertogs.test"}
+    assert emails == {OWNER, "a@mcp-hosting.test", "b@mcp-hosting.test", "c@mcp-hosting.test"}
     platform.apply_routes("reconcile")  # stays: the host is no longer held
     emails = {rule["email"]["is"] for rule in routes_by_host(platform)["blog.example.com"]["policy"][0]["allow"]["or"]}
-    assert "b@hertogs.test" in emails
+    assert "b@mcp-hosting.test" in emails
 
 
 def test_config_is_written_atomically_and_readable(tmp_path):
@@ -1048,6 +1048,6 @@ def test_full_api_settings_validation(tmp_path):
 def test_full_api_audit_records_actor(tmp_path):
     platform, gaming = make_platform(tmp_path)
     client = TestClient(build_full_app(platform, gaming), base_url="http://deployer")
-    client.post("/v1/people", json={"op": "add_person", "email": "x@hertogs.test"}, headers={"X-Actor": OWNER})
+    client.post("/v1/people", json={"op": "add_person", "email": "x@mcp-hosting.test"}, headers={"X-Actor": OWNER})
     entries = client.get("/v1/audit").json()["audit"]
     assert entries[0]["actor"] == OWNER and entries[0]["action"] == "people.add"

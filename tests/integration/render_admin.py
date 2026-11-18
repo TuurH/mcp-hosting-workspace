@@ -4,12 +4,12 @@ from pathlib import Path
 import jinja2
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'platform'))
-from hertogs_platform.admin.app import (_fmt_ago, _fmt_bytes, _fmt_duration, _fmt_time, ASK_SECTIONS, OPERATION_LABELS,
+from mcp_hosting_platform.admin.app import (_fmt_ago, _fmt_bytes, _fmt_duration, _fmt_time, ASK_SECTIONS, OPERATION_LABELS,
                                         QUOTA_LABELS, STAGE_LABELS, release_checklist, storage_view, summarize_request)
-from hertogs_platform.deployer.db import DEFAULT_SETTINGS
+from mcp_hosting_platform.deployer.db import DEFAULT_SETTINGS
 import copy
 
-root=Path(__file__).resolve().parents[2]/'platform/hertogs_platform/admin'
+root=Path(__file__).resolve().parents[2]/'platform/mcp_hosting_platform/admin'
 output=Path(sys.argv[1]);output.mkdir(parents=True,exist_ok=True)
 env=jinja2.Environment(loader=jinja2.FileSystemLoader(root/'templates'),autoescape=True)
 env.filters['bytes']=_fmt_bytes;env.filters['time']=_fmt_time;env.filters['ago']=_fmt_ago;env.filters['duration']=_fmt_duration
@@ -27,9 +27,9 @@ app=dict(name='weather',kind='runtime',stage='shared',environment='production',e
          manifests={version:manifest,pending:manifest},grants={version:['SERVICE_TOKEN'],pending:[]},operations=[dict(id='b'*32,kind='image-build',status='running',phase='Building the image',phase_detail='[stage 3/7] RUN pip install -r requirements.txt',elapsed_seconds=754,has_log=True,result=dict(version=pending),created_at=1791332120,updated_at=1791332874),
                      dict(id='e'*32,kind='data-export',status='succeeded',elapsed_seconds=41,has_log=True,result=dict(version=version,destination='/workspace/inbox/weather-sample'),created_at=1791332000,updated_at=1791332041),
                      dict(id='f'*32,kind='release',status='failed',elapsed_seconds=95,has_log=True,result=dict(version=version,failed_phase='Waiting for the web component',error='Web component did not become ready on its declared port.'),created_at=1791331000,updated_at=1791331095)])
-from hertogs_platform.deployer.capabilities import capabilities
+from mcp_hosting_platform.deployer.capabilities import capabilities
 app.update(revision='reviewed-state',ai_permissions=dict(install_packages=True,run_tests=True,restart=False,deploy=False,delete=False,call_read=True,call_write=False,call_destructive=False),
-           build_cache=dict(volume='hertogs-app-weather-buildcache',bytes=3*1024**3,last_used=1791332874,limit_gb=20),actions_reviewed=True,
+           build_cache=dict(volume='mcp-hosting-app-weather-buildcache',bytes=3*1024**3,last_used=1791332874,limit_gb=20),actions_reviewed=True,
            actions=[dict(name='list_tasks',description='List the open tasks of one project.',method='GET',path='/api/projects/{project}/tasks',input={'project':'integer'},allowed=True,**{'class':'read'}),
                     dict(name='delete_task',description='Delete one task for good.',method='DELETE',path='/api/tasks/{task}',input={'task':'integer'},allowed=False,**{'class':'destructive'})],
            going_back='A rollback or restore changes code only. App data is never rolled back: the old code runs on the data the newer version left. Only the previous revision keeps its image.',

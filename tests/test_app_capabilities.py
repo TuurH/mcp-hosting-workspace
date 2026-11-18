@@ -9,12 +9,12 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from hertogs_platform.deployer.api import build_full_app, build_narrow_app
-from hertogs_platform.deployer.capabilities import capabilities, network, within
-from hertogs_platform.deployer.export_worker import export
-from hertogs_platform.deployer.network_guard import rules, dns_rules
-from hertogs_platform.deployer.runtime import validate_manifest
-from hertogs_platform.common.docker_client import DockerClient
+from mcp_hosting_platform.deployer.api import build_full_app, build_narrow_app
+from mcp_hosting_platform.deployer.capabilities import capabilities, network, within
+from mcp_hosting_platform.deployer.export_worker import export
+from mcp_hosting_platform.deployer.network_guard import rules, dns_rules
+from mcp_hosting_platform.deployer.runtime import validate_manifest
+from mcp_hosting_platform.common.docker_client import DockerClient
 from platform_helpers import API_TOKEN, make_platform, site_archive
 from test_runtime_recovery import seeded
 
@@ -113,7 +113,7 @@ def test_gpu_grant_and_gaming_stop_live_without_losing_online_intent(tmp_path):
         conn.execute('UPDATE runtime_versions SET manifest=? WHERE version_id=?',(json.dumps(manifest),'old'))
     platform.set_online('service',True,'owner')
     gpu=[c for c in docker.containers.values() if c['HostConfig'].get('DeviceRequests')]
-    assert gpu and all(c['State']=='running' or c['Labels'].get('be.hertogs.kind')=='schedule' for c in gpu)
+    assert gpu and all(c['State']=='running' or c['Labels'].get('mcp-hosting-workspace.kind')=='schedule' for c in gpu)
     platform.db.set_setting('gaming_state',{'state':'on'})
     runtime.apply_gpu_policy()
     assert all(c['State']!='running' for c in gpu)
@@ -126,19 +126,19 @@ def test_revocation_stops_components_and_removes_namespaces(tmp_path):
     platform,_,runtime,docker=seeded(tmp_path)
     runtime.set_capabilities('service',{'network':{'dns':True}},'owner')
     assert not platform.db.app('service')['online']
-    assert not [c for c in docker.containers.values() if c['Labels'].get('be.hertogs.purpose')=='runtime']
+    assert not [c for c in docker.containers.values() if c['Labels'].get('mcp-hosting-workspace.purpose')=='runtime']
 
 
 def test_development_has_no_production_mounts_or_keys(tmp_path):
     platform,_,runtime,docker=seeded(tmp_path)
     runtime.development.grant('service',{'version':'old','capabilities':{}},'owner')
     runtime.development.start('service')
-    config=docker.containers['hertogs-dev-service']['Config']
+    config=docker.containers['mcp-hosting-dev-service']['Config']
     assert not config['HostConfig'].get('Mounts')
     assert config['Env']==['NVIDIA_VISIBLE_DEVICES=void']
     assert not config['HostConfig'].get('DeviceRequests')
     platform.set_policy('service','production',{},'owner')
-    assert docker.containers['hertogs-dev-service']['State']=='exited'
+    assert docker.containers['mcp-hosting-dev-service']['State']=='exited'
     with pytest.raises(ValueError): runtime.development.start('service')
 
 
@@ -149,8 +149,8 @@ def test_emergency_lock_closes_development_ports_and_blocks_restart(tmp_path):
     runtime.development.start('service')
     platform.db.set_setting('access_lockdown',True)
     runtime.hold_service_ports()
-    assert docker.containers['hertogs-dev-service']['State']=='exited'
-    assert docker.containers['hertogs-dev-service-gateway']['State']=='exited'
+    assert docker.containers['mcp-hosting-dev-service']['State']=='exited'
+    assert docker.containers['mcp-hosting-dev-service-gateway']['State']=='exited'
     with pytest.raises(ValueError,match='emergency access lock'): runtime.development.start('service')
 
 
@@ -163,7 +163,7 @@ def test_development_exact_sources_use_trusted_proxy_without_direct_access(tmp_p
     _,_,runtime,docker=seeded(tmp_path)
     runtime.development.grant('service',{'version':'old','outbound':['pypi.org:443']},'owner')
     runtime.development.start('service')
-    config=docker.containers['hertogs-dev-service']['Config']
+    config=docker.containers['mcp-hosting-dev-service']['Config']
     assert 'HTTPS_PROXY=http://172.20.0.3:8080' in config['Env']
     grant=runtime.development.report('service')['grant']
     assert grant['outbound']==['pypi.org:443'] and not grant['capabilities']['network']['tcp']
@@ -203,14 +203,14 @@ def test_build_run_dns_uses_only_approved_relay_outside_source(tmp_path,monkeypa
     worker=captured['worker']
     assert '--config=/home/user/buildkitd.toml' in worker['Env'][0]
     assert worker['User']=='1000:1000'
-    assert worker['HostConfig']['NetworkMode']=='container:hertogs-build-dns-probe-gateway'
+    assert worker['HostConfig']['NetworkMode']=='container:mcp-hosting-build-dns-probe-gateway'
     assert not worker['HostConfig'].get('Privileged')
     # The only mount is this app's own build cache volume: no host paths, no other app's cache.
-    assert worker['HostConfig']['Mounts']==[{'Type':'volume','Source':'hertogs-app-buildable-buildcache',
+    assert worker['HostConfig']['Mounts']==[{'Type':'volume','Source':'mcp-hosting-app-buildable-buildcache',
                                              'Target':'/home/user/.local/share/buildkit'}]
     assert not worker['HostConfig'].get('Binds')
-    cache=docker.volumes['hertogs-app-buildable-buildcache']
-    assert cache['Labels']['be.hertogs.backup']=='false'   # caches never enter backups
+    cache=docker.volumes['mcp-hosting-app-buildable-buildcache']
+    assert cache['Labels']['mcp-hosting-workspace.backup']=='false'   # caches never enter backups
     assert worker['Entrypoint'][:2]==['sh','-c'] and 'prune --keep-storage' in worker['Entrypoint'][2]
     assert '--opt' in worker['Cmd'] and 'no-cache=' not in worker['Cmd']
 
@@ -259,7 +259,7 @@ def test_export_requests_validate_scope_before_owner_review(tmp_path,paths):
 def test_dns_refresh_replaces_custom_chains_without_flushing_docker():
     script=dns_rules('172.30.0.4',True)
     assert script.count('COMMIT')==1
-    assert '-F HERTOGS_DNS\n' in script and '-F HERTOGS_DNS_SNAT\n' in script
+    assert '-F MCP_HOSTING_DNS\n' in script and '-F MCP_HOSTING_DNS_SNAT\n' in script
     assert '-F OUTPUT' not in script
     for protocol in ('tcp','udp'):
         assert f'-d 127.0.0.11 -p {protocol} --dport 53 -j DNAT --to-destination 172.30.0.4:53' in script
@@ -270,7 +270,7 @@ def test_dns_refresh_replaces_custom_chains_without_flushing_docker():
 
 def test_engine_canonical_namespace_id_preserves_running_components(tmp_path,monkeypatch):
     _,_,runtime,docker=seeded(tmp_path)
-    web='hertogs-app-service-old-web'
+    web='mcp-hosting-app-service-old-web'
     gateway=docker.containers[web]['HostConfig']['NetworkMode'].removeprefix('container:')
     engine_id='f'*64
     original_inspect=docker.inspect_container
@@ -281,11 +281,11 @@ def test_engine_canonical_namespace_id_preserves_running_components(tmp_path,mon
     monkeypatch.setattr(docker,'inspect_container',inspect)
     original_web=docker.containers[web]
     for name,container in docker.containers.items():
-        if container['Labels'].get('be.hertogs.component'):
+        if container['Labels'].get('mcp-hosting-workspace.component'):
             container['HostConfig']['NetworkMode']='container:'+engine_id
     runtime.start('service','old')
     assert docker.containers[web] is original_web
-    assert not any(event[0]=='remove' and event[1].startswith('hertogs-app-service-old-') for event in docker.events)
+    assert not any(event[0]=='remove' and event[1].startswith('mcp-hosting-app-service-old-') for event in docker.events)
 
 
 def test_owner_development_start_requires_current_review_and_keeps_files(tmp_path):
@@ -299,11 +299,11 @@ def test_owner_development_start_requires_current_review_and_keeps_files(tmp_pat
     revision=platform.revision('service')
     response=full.post(path,json={'revision':revision,'action':'start'})
     assert response.status_code==200
-    assert docker.containers['hertogs-dev-service']['State']=='running'
-    retained=docker.containers['hertogs-dev-service']
+    assert docker.containers['mcp-hosting-dev-service']['State']=='running'
+    retained=docker.containers['mcp-hosting-dev-service']
     assert full.post(path,json={'revision':platform.revision('service'),'action':'stop'}).status_code==200
     assert full.post(path,json={'revision':platform.revision('service'),'action':'start'}).status_code==200
-    assert docker.containers['hertogs-dev-service'] is retained
+    assert docker.containers['mcp-hosting-dev-service'] is retained
     platform.set_policy('service','staging',{},'owner')
     assert full.post(path,json={'revision':platform.revision('service'),'action':'start'}).status_code==400
 

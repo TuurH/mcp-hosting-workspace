@@ -45,7 +45,7 @@ def site(html: str) -> bytes:
 def visit(client: httpx.Client, host: str, path: str = "/") -> httpx.Response:
     return client.get(f"{POMERIUM}{path}", headers={
         "Host": host, "X-Forwarded-Proto": "https", "Cf-Connecting-IP": "203.0.113.9",
-        "X-Pomerium-Claim-Email": "owner@hertogs.test"})
+        "X-Pomerium-Claim-Email": "owner@mcp-hosting.test"})
 
 
 def until(fn, timeout: float = 20.0):
@@ -69,7 +69,7 @@ with httpx.Client(timeout=30.0, follow_redirects=False) as client:
     check("wrong login link is refused",
           client.get(f"{ADMIN}/local-login", params={"token": "guess"}).status_code == 403)
     login = client.get(f"{ADMIN}/local-login", params={"token": ADMIN_TOKEN})
-    check("login link sets the session cookie", login.status_code == 303 and "hertogs_admin_local" in client.cookies)
+    check("login link sets the session cookie", login.status_code == 303 and "mcp_hosting_admin_local" in client.cookies)
     check("login link works only once",
           httpx.get(f"{ADMIN}/local-login", params={"token": ADMIN_TOKEN}).status_code == 403)
 

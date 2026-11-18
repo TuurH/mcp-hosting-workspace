@@ -8,9 +8,9 @@ import threading
 import time
 
 import httpx
-from hertogs_platform.common.docker_client import DockerClient
+from mcp_hosting_platform.common.docker_client import DockerClient
 
-owner=httpx.Client(transport=httpx.HTTPTransport(uds='/run/hertogs/deployer.sock'),base_url='http://deployer',timeout=180)
+owner=httpx.Client(transport=httpx.HTTPTransport(uds='/run/mcp-hosting-workspace/deployer.sock'),base_url='http://deployer',timeout=180)
 ai=httpx.Client(base_url='http://127.0.0.1:8090',headers={'Authorization':'Bearer '+os.environ['DEPLOYER_API_TOKEN']},timeout=55)
 docker=DockerClient()
 created=[]
@@ -72,7 +72,7 @@ def udp():
 threading.Thread(target=udp,daemon=True).start()
 http.server.HTTPServer(('0.0.0.0',8080),http.server.SimpleHTTPRequestHandler).serve_forever()
 """
-    manifest={'image':'hertogs/platform:local','cpus':.5,'memory_mb':256,'storage_gb':1,
+    manifest={'image':'mcp-hosting-workspace/platform:local','cpus':.5,'memory_mb':256,'storage_gb':1,
               'capabilities':{'network':{'dns':True,'tcp':[{'destination':'public','ports':[443]}],
               'udp':[{'destination':'public','ports':[]}],
               'ingress':[{'protocol':'udp','port':5201,'host_port':15201,'exposure':'public','bind_ip':'0.0.0.0'}]}},
@@ -84,7 +84,7 @@ http.server.HTTPServer(('0.0.0.0',8080),http.server.SimpleHTTPRequestHandler).se
     change(name,'capabilities',version=version)
     op=change(name,'release',version=version);wait(name,op['operation_id'])
     change(name,'start')
-    web=f'hertogs-app-{name}-{version}-web'
+    web=f'mcp-hosting-app-{name}-{version}-web'
     info=docker.inspect_container(web)
     gateway=info['HostConfig']['NetworkMode'].removeprefix('container:')
     assert docker.inspect_container(gateway)['HostConfig']['PortBindings']['5201/udp'][0]['HostPort']=='15201'
@@ -97,7 +97,7 @@ for host in ['169.254.169.254','10.204.6.1']:
 """
     result=docker.exec(web,['python','-c',checks],timeout=20)
     if result.exit_code:
-        print('DNS relay logs:',docker.container_logs(f'hertogs-app-{name}-{version}-dns'))
+        print('DNS relay logs:',docker.container_logs(f'mcp-hosting-app-{name}-{version}-dns'))
         print('DNS namespace diagnostics:',docker.exec(gateway,['sh','-c','cat /etc/resolv.conf; iptables-save; ip route'],user='0').stdout)
     assert result.exit_code==0,(result.stdout,result.stderr)
     # Continuous DNS queries must survive repeated atomic guard refreshes.
@@ -113,17 +113,17 @@ for host in ['169.254.169.254','10.204.6.1']:
     assert not dns_thread.is_alive() and len(dns_results)==1,dns_results
     assert getattr(dns_results[0],'exit_code',1)==0,dns_results
     # Real UDP forwarding and replies on a published host port, not an HTTP route.
-    external='hertogs-runtime-egress'
-    probe=docker.create_container(None,{'Image':'hertogs/platform:local','User':'1000:1000',
+    external='mcp-hosting-runtime-egress'
+    probe=docker.create_container(None,{'Image':'mcp-hosting-workspace/platform:local','User':'1000:1000',
         'Entrypoint':['python','-c',"import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);s.sendto(b'udp works',('host.docker.internal',15201));assert s.recv(100)==b'udp works'"],
         'HostConfig':{'NetworkMode':external,'ExtraHosts':['host.docker.internal:host-gateway'],'CapDrop':['ALL']}})
     try: docker.start_container(probe);assert docker.wait_container(probe,timeout=10)==0,docker.container_logs(probe)
     finally: docker.remove_container(probe)
     export=change(name,'data-export',paths=['export.txt'],max_bytes=1024,stop_for_consistency=True)
     exported=wait(name,export['operation_id'])['result'];assert exported['bytes']==13
-    code,output=docker.run_capture({'Image':'hertogs/platform:local','User':'1000:1000',
+    code,output=docker.run_capture({'Image':'mcp-hosting-workspace/platform:local','User':'1000:1000',
         'Entrypoint':['python','-c',f"from pathlib import Path;assert Path({exported['destination']!r}+'/export.txt').read_text()=='approved data'"],
-        'HostConfig':{'NetworkMode':'none','Mounts':[{'Type':'volume','Source':'hertogs-ai-workspace-data','Target':'/workspace','ReadOnly':True}]}})
+        'HostConfig':{'NetworkMode':'none','Mounts':[{'Type':'volume','Source':'mcp-hosting-workspace-data','Target':'/workspace','ReadOnly':True}]}})
     assert code==0,output
     assert detail(name)['online']
     # Emergency lock also closes raw service ports and preserves desired online intent.
@@ -138,14 +138,14 @@ for host in ['169.254.169.254','10.204.6.1']:
     assert action.status_code==200,action.text
     command=wait(name,action.json()['operation_id'])
     assert 'colorama==0.4.6' in command['record']['after']['text']
-    devinfo=docker.inspect_container('hertogs-dev-'+name)
+    devinfo=docker.inspect_container('mcp-hosting-dev-'+name)
     assert not devinfo['Mounts'] and 'SERVICE_TOKEN' not in '\n'.join(devinfo['Config'].get('Env',[]))
     snapshot=ai.post('/v1/apps/'+name+'/development',json={'action':'snapshot'})
     assert snapshot.status_code==200,snapshot.text
     frozen=wait(name,snapshot.json()['operation_id'])['result']['version']
     assert detail(name)['live_version']==version
     op=change(name,'release',version=frozen);wait(name,op['operation_id'])
-    newweb=f'hertogs-app-{name}-{frozen}-web'
+    newweb=f'mcp-hosting-app-{name}-{frozen}-web'
     result=docker.exec(newweb,['python','-c',"import colorama;from pathlib import Path;assert Path('/app/marker.txt').read_text()=='development snapshot'"],timeout=20)
     assert result.exit_code==0,(result.stdout,result.stderr)
     assert not any(m['Destination']=='/app' for m in docker.inspect_container(newweb)['Mounts'])
@@ -153,7 +153,7 @@ for host in ['169.254.169.254','10.204.6.1']:
     # handshakes must redirect; public handshakes support frames and reconnection.
     name='wscheck'
     websocket_source="from websockets.sync.server import serve\ndef echo(c): c.send(c.recv())\nwith serve(echo,'0.0.0.0',8080) as server: server.serve_forever()\n"
-    manifest={'image':'hertogs/platform:local','memory_mb':128,'cpus':.25,
+    manifest={'image':'mcp-hosting-workspace/platform:local','memory_mb':128,'cpus':.25,
               'components':[{'name':'web','kind':'web','port':8080,'command':['python','ws.py']}]}
     response=ai.post('/v1/apps/'+name+'/versions',params={'kind':'runtime'},content=pack({'app.json':json.dumps(manifest),'ws.py':websocket_source}))
     assert response.status_code==200,response.text
@@ -173,7 +173,7 @@ def receive(s,n):
   result+=chunk
  return result
 for repeat in range(2):
- s=socket.create_connection(('hertogs-pomerium',80),timeout=10)
+ s=socket.create_connection(('mcp-hosting-pomerium',80),timeout=10)
  s.sendall(b'GET / HTTP/1.1\\r\\nHost: wscheck.example.com\\r\\nConnection: Upgrade\\r\\nUpgrade: websocket\\r\\nSec-WebSocket-Version: 13\\r\\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\\r\\n\\r\\n')
  response=b''
  while b'\\r\\n\\r\\n' not in response: response+=s.recv(4096)
@@ -183,8 +183,8 @@ for repeat in range(2):
  assert frame[:2]==bytes([129,len(payload)]) and frame[2:7]==payload,frame
  s.close()
 """
-    probe=docker.create_container(None,{'Image':'hertogs/platform:local','Entrypoint':['python','-c',handshake],
-                                      'HostConfig':{'NetworkMode':'hertogs-platform','CapDrop':['ALL']}})
+    probe=docker.create_container(None,{'Image':'mcp-hosting-workspace/platform:local','Entrypoint':['python','-c',handshake],
+                                      'HostConfig':{'NetworkMode':'mcp-hosting-platform','CapDrop':['ALL']}})
     try:
         docker.start_container(probe);assert docker.wait_container(probe,timeout=30)==0,docker.container_logs(probe)
     finally: docker.remove_container(probe)
@@ -200,7 +200,7 @@ for repeat in range(2):
     job=change(name,'image-build',version=version,network={'dns':True,'tcp':[{'destination':'public','ports':[443]}]})
     wait(name,job['operation_id'])
     op=change(name,'release',version=version);wait(name,op['operation_id'])
-    web=f'hertogs-app-{name}-{version}-web'
+    web=f'mcp-hosting-app-{name}-{version}-web'
     assert docker.exec(web,['cat','/app/built.txt']).stdout.strip()=='image build'
     print('PASS: service ports, DNS, revocation, dev dependencies/snapshot, exports, WebSockets and rootless builds')
 finally:

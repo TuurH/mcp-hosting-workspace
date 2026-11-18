@@ -27,21 +27,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build platform image
-        run: docker build -t hertogs/platform:local platform
+        run: docker build -t mcp-hosting-workspace/platform:local platform
       - name: Files container integration test
-        run: tests/integration/files_container.sh hertogs/platform:local
+        run: tests/integration/files_container.sh mcp-hosting-workspace/platform:local
       - name: Platform stack integration test (deployer, Pomerium, static, admin)
         run: |
           docker pull moby/buildkit:v0.35.0-rootless
           # CI host prerequisite for isolated rootless user namespaces.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          tests/integration/platform_stack.sh hertogs/platform:local
+          tests/integration/platform_stack.sh mcp-hosting-workspace/platform:local
       - name: Render owner pages and check desktop/mobile layout
         if: always()
         run: |
           # Create the output directory as the runner so Playwright can write screenshots.
           mkdir -p ui-artifacts
-          docker run --rm --network none --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo hertogs/platform:local python tests/integration/render_admin.py ui-artifacts
+          docker run --rm --network none --user "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo mcp-hosting-workspace/platform:local python tests/integration/render_admin.py ui-artifacts
           npm install --no-save --package-lock=false playwright
           npx playwright install --with-deps chromium
           node tests/integration/admin_layout.cjs
@@ -53,7 +53,7 @@ jobs:
           name: admin-ui-${{ github.event_name }}
           path: ui-artifacts/*.png
       - name: Gaming mode GPU reaper integration test
-        run: tests/integration/gpu_reaper.sh hertogs/platform:local
+        run: tests/integration/gpu_reaper.sh mcp-hosting-workspace/platform:local
       - name: Validate compose files
         run: |
           docker compose -f compose.yaml config --quiet

@@ -170,7 +170,7 @@ changes the declared actions, none can be called until the owner releases a vers
 
 The AI calls them with `app_call_read(name, action, arguments)` and
 `app_call_write(name, action, arguments)`; `app_status` lists the actions with `allowed`. The
-request is made inside the app's own network namespace with the header `x-hertogs-caller: ai`,
+request is made inside the app's own network namespace with the header `x-mcp-hosting-caller: ai`,
 does not follow redirects, and returns the status and at most 64 KB of the body. The audit log
 records each call without its content. The app itself must check that the request does what the
 action name says: the platform limits which requests can be made, not what the app does with them.

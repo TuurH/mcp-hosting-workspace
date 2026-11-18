@@ -96,8 +96,8 @@ if ((Invoke-NativeLive docker $buildArgs) -ne 0) { throw "docker compose build f
 $missing = @("DEPLOYER_SECRETS_KEY", "POMERIUM_SHARED_SECRET", "POMERIUM_COOKIE_SECRET", "POMERIUM_SIGNING_KEY") |
     Where-Object { -not (Get-EnvValue $_) }
 if ($missing) {
-    $generated = Invoke-Native docker (@("run", "--rm", "--network", "none", "hertogs/platform:local",
-        "python", "-m", "hertogs_platform.setup_secrets") + $missing)
+    $generated = Invoke-Native docker (@("run", "--rm", "--network", "none", "mcp-hosting-workspace/platform:local",
+        "python", "-m", "mcp_hosting_platform.setup_secrets") + $missing)
     if ($generated.ExitCode -ne 0) { throw "Generating secrets failed: $($generated.Output -join ' ')" }
     foreach ($line in $generated.Output) {
         if ($line -match '^([A-Z_]+)=(\S+)$' -and $missing -contains $Matches[1]) {

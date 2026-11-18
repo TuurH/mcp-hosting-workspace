@@ -6,17 +6,17 @@
 
 .DESCRIPTION
     Included:
-      - every Docker volume labelled be.hertogs.backup=true (platform state;
+      - every Docker volume labelled mcp-hosting-workspace.backup=true (platform state;
         later also app data, static sites and approved app images)
       - the workspace folders from BACKUP_WORKSPACE_FOLDERS, without
         node_modules, .venv, __pycache__ and .cache
-    Before copying, running containers labelled be.hertogs.backup.pre get that
+    Before copying, running containers labelled mcp-hosting-workspace.backup.pre get that
     command executed (consistent database snapshots).
 
     Keeps the newest backup of each of the last BACKUP_KEEP_DAILY days and of
     each of the BACKUP_KEEP_WEEKLY weeks before that. The result of every run
     is written to last-backup.json in the backup folder and in
-    %LOCALAPPDATA%\HertogsBackup (which also holds the logs of scheduled runs,
+    %LOCALAPPDATA%\McpHostingWorkspaceBackup (which also holds the logs of scheduled runs,
     so a failure is recorded even when the backup folder cannot be reached).
 
     Keep your .env in a password manager: encrypted data in the backup cannot
@@ -45,7 +45,7 @@ Set-Location (Get-ProjectRoot)
 
 # Status and logs always go to a local folder too, so a run that fails before
 # the backup folder is reachable (NAS offline, drive unplugged) is still recorded.
-$localDir = Join-Path $env:LOCALAPPDATA "HertogsBackup"
+$localDir = Join-Path $env:LOCALAPPDATA "McpHostingWorkspaceBackup"
 New-Item -ItemType Directory -Force -Path (Join-Path $localDir "logs") | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $transcript = $false
@@ -60,14 +60,14 @@ $status = [ordered]@{ time = (Get-Date).ToString("o"); status = "error"; folder 
 $statusFile = $null
 
 try {
-    $HelperImage = "hertogs/platform:local"
-    $WorkspaceVolume = "hertogs-ai-workspace-data"
+    $HelperImage = "mcp-hosting-workspace/platform:local"
+    $WorkspaceVolume = "mcp-hosting-workspace-data"
 
     # --- Backup folder -----------------------------------------------------------
     $backupDir = Get-EnvValue "BACKUP_DIR"
     if ($ChooseFolder -or -not $backupDir) {
         if ($Scheduled) { throw "BACKUP_DIR is not set in .env. Run .\scripts\backup.ps1 -ChooseFolder once." }
-        $picked = Select-Folder "Choose where Hertogs backups are stored"
+        $picked = Select-Folder "Choose where MCP Hosting Workspace backups are stored"
         if (-not $picked) { throw "No folder chosen." }
         if ($picked -match "['""]") { throw "Choose a folder whose path has no quote characters." }
         Set-EnvValue "BACKUP_DIR" $picked
@@ -91,9 +91,9 @@ try {
         $taskSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries `
             -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 3) `
             -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 15)
-        Register-ScheduledTask -TaskName "Hertogs backup" -Action $action -Trigger $trigger `
-            -Settings $taskSettings -Description "Backs up Hertogs platform data to $backupDir" -Force | Out-Null
-        Write-Host "Scheduled 'Hertogs backup' daily at $At using $shellPath."
+        Register-ScheduledTask -TaskName "MCP Hosting Workspace backup" -Action $action -Trigger $trigger `
+            -Settings $taskSettings -Description "Backs up MCP Hosting Workspace platform data to $backupDir" -Force | Out-Null
+        Write-Host "Scheduled 'MCP Hosting Workspace backup' daily at $At using $shellPath."
         Write-Host "It runs while you are logged in (Docker Desktop must be running). Logs: $localDir\logs"
         $status.status = "installed"
         return
@@ -102,9 +102,9 @@ try {
     # --- Backup ------------------------------------------------------------------
     # Docker Desktop cannot mount network shares, so those go through a local folder first.
     $isNetwork = Test-NetworkPath $backupDir
-    $workRoot = if ($isNetwork) { Join-Path $env:LOCALAPPDATA "HertogsBackupStaging" } else { $backupDir }
-    $work = Join-Path $workRoot "hertogs-$stamp.partial"
-    $final = Join-Path $backupDir "hertogs-$stamp"
+    $workRoot = if ($isNetwork) { Join-Path $env:LOCALAPPDATA "McpHostingWorkspaceBackupStaging" } else { $backupDir }
+    $work = Join-Path $workRoot "mcp-hosting-$stamp.partial"
+    $final = Join-Path $backupDir "mcp-hosting-$stamp"
     $warnings = New-Object 'System.Collections.Generic.List[string]'
 
     function Invoke-Helper {
@@ -129,7 +129,7 @@ try {
         New-Item -ItemType Directory -Force -Path $work | Out-Null
 
         # Consistent snapshots first (e.g. SQLite databases).
-        $running = Invoke-Native docker @("ps", "--filter", "label=be.hertogs.backup.pre", "--format", "{{.Names}}")
+        $running = Invoke-Native docker @("ps", "--filter", "label=mcp-hosting-workspace.backup.pre", "--format", "{{.Names}}")
         foreach ($container in @($running.Output | Where-Object { $_ })) {
             $state = (Invoke-Native docker @("inspect", "--format", "{{.State.Status}}", $container)).Output -join ""
             if ($state -ne "running") {
@@ -137,7 +137,7 @@ try {
                 continue
             }
             $labels = (Invoke-Native docker @("inspect", "--format", "{{json .Config.Labels}}", $container)).Output -join ""
-            $command = (ConvertFrom-Json $labels)."be.hertogs.backup.pre"
+            $command = (ConvertFrom-Json $labels)."mcp-hosting-workspace.backup.pre"
             if (-not $command) { continue }
             Write-Host "Snapshot in $container ..."
             $result = Invoke-Native docker (@("exec", $container) + ($command -split '\s+'))
@@ -146,7 +146,7 @@ try {
             if ($result.ExitCode -ne 0) { $warnings.Add("snapshot in $container failed: $($result.Output -join ' ')") }
         }
 
-        $volumes = @((Invoke-Native docker @("volume", "ls", "--quiet", "--filter", "label=be.hertogs.backup=true")).Output |
+        $volumes = @((Invoke-Native docker @("volume", "ls", "--quiet", "--filter", "label=mcp-hosting-workspace.backup=true")).Output |
             Where-Object { $_ })
         foreach ($volume in $volumes) {
             Write-Host "Volume $volume ..."
@@ -180,8 +180,8 @@ try {
         }
 
         # Keep immutable runtime images alongside source and data volumes.
-        if (@($running.Output) -contains "hertogs-deployer") {
-            $runtimeResult = Invoke-Native docker @("exec", "hertogs-deployer", "python", "-m", "hertogs_platform.deployer.cli", "runtime-images")
+        if (@($running.Output) -contains "mcp-hosting-deployer") {
+            $runtimeResult = Invoke-Native docker @("exec", "mcp-hosting-deployer", "python", "-m", "mcp_hosting_platform.deployer.cli", "runtime-images")
             if ($runtimeResult.ExitCode -ne 0) { throw "Could not enumerate runtime images for this backup." }
             $runtimeImages = @($runtimeResult.Output | Where-Object { $_ -match '^sha256:[a-f0-9]{64}$' })
             if ($runtimeImages.Count -gt 0) {
@@ -240,7 +240,7 @@ try {
         $rawWeekly = Get-EnvValue "BACKUP_KEEP_WEEKLY"
         $keepWeekly = if ($rawWeekly -match '^\d+$') { [int]$rawWeekly } else { 4 }
         $complete = @(Get-ChildItem -LiteralPath $backupDir -Directory |
-            Where-Object { $_.Name -match '^hertogs-\d{8}-\d{6}$' -and (Test-Path -LiteralPath (Join-Path $_.FullName "manifest.json")) })
+            Where-Object { $_.Name -match '^mcp-hosting-\d{8}-\d{6}$' -and (Test-Path -LiteralPath (Join-Path $_.FullName "manifest.json")) })
         $keep = Select-BackupsToKeep -Names @($complete | ForEach-Object Name) -Daily $keepDaily -Weekly $keepWeekly
         foreach ($backup in $complete) {
             if ($keep -notcontains $backup.Name) {
@@ -251,7 +251,7 @@ try {
         # Leftovers from interrupted runs.
         foreach ($root in @($backupDir, $workRoot) | Select-Object -Unique) {
             if (-not (Test-Path -LiteralPath $root)) { continue }
-            Get-ChildItem -LiteralPath $root -Directory -Filter "hertogs-*.partial" |
+            Get-ChildItem -LiteralPath $root -Directory -Filter "mcp-hosting-*.partial" |
                 Where-Object { $_.FullName -ne $work -and $_.LastWriteTime -lt (Get-Date).AddDays(-1) } |
                 ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
         }

@@ -17,7 +17,7 @@ from app.config import Settings
 
 TEAM = "https://team.cloudflareaccess.com"
 AUD = "aud-mcp"
-OWNER = "owner@hertogs.test"
+OWNER = "owner@mcp-hosting.test"
 HOST = "mcp.example.com"
 
 _KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -71,7 +71,7 @@ def test_valid_owner_token_is_accepted(tmp_path):
 
 
 def test_email_comparison_is_case_insensitive(tmp_path):
-    response = get(client_for(make_settings(tmp_path)), token=make_token(email="Owner@Hertogs.TEST"))
+    response = get(client_for(make_settings(tmp_path)), token=make_token(email="Owner@MCP-HOSTING.TEST"))
     assert response.status_code == 200
 
 
@@ -128,7 +128,7 @@ def test_token_without_email_is_403(tmp_path):
 
 
 def test_other_email_is_403(tmp_path):
-    response = get(client_for(make_settings(tmp_path)), token=make_token(email="someone@hertogs.test"))
+    response = get(client_for(make_settings(tmp_path)), token=make_token(email="someone@mcp-hosting.test"))
     assert response.status_code == 403
 
 

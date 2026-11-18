@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from hertogs_platform.common.docker_client import ExecResult
-from hertogs_platform.common.names import runtime_gateway_name
-from hertogs_platform.deployer.api import _logs, _test, build_full_app
-from hertogs_platform.deployer.runtime import LABEL, Runtime
+from mcp_hosting_platform.common.docker_client import ExecResult
+from mcp_hosting_platform.common.names import runtime_gateway_name
+from mcp_hosting_platform.deployer.api import _logs, _test, build_full_app
+from mcp_hosting_platform.deployer.runtime import LABEL, Runtime
 from platform_helpers import OWNER, make_platform, site_archive
 
 
@@ -33,10 +33,10 @@ class StateDocker:
         return [dict(c, Id=name) for name,c in self.containers.items() if matches(c)]
 
     def container_exists(self, name):
-        return name == 'hertogs-pomerium' or name in self.containers
+        return name == 'mcp-hosting-pomerium' or name in self.containers
 
     def inspect_container(self, name):
-        if name == 'hertogs-pomerium':
+        if name == 'mcp-hosting-pomerium':
             return {'State':{'Running':True},'NetworkSettings':{'Networks':Networks('172.20.0.2')}}
         c = self.containers[name]
         return {'Id':name,'State':{'Running':c['State']=='running','Status':c['State'],'StartedAt':c.get('StartedAt')},
@@ -71,7 +71,7 @@ class StateDocker:
     def ensure_network(self, name, **kw): return name
     def ensure_volume(self, name, backup=True, labels=None):
         existed = name in self.volumes
-        self.volumes.setdefault(name, {'Name':name,'Labels':{'be.hertogs.backup':str(backup).lower(),**(labels or {})}})
+        self.volumes.setdefault(name, {'Name':name,'Labels':{'mcp-hosting-workspace.backup':str(backup).lower(),**(labels or {})}})
         return True if not labels else existed
     def inspect_volume(self, name): return self.volumes.get(name)
     def remove_volume(self, name):
@@ -84,7 +84,7 @@ class StateDocker:
 
     def exec(self, name, cmd, **kw):
         self.events.append(('exec',name,cmd))
-        if len(cmd)==4 and 'def probe(' in cmd[2] and 'hertogs_platform' not in cmd[2]:
+        if len(cmd)==4 and 'def probe(' in cmd[2] and 'mcp_hosting_platform' not in cmd[2]:
             compile(cmd[2], '<runtime-web-check>', 'exec')
             return ExecResult(0,json.dumps({'status':200,'content_type':'text/plain','body_start':'runtime response'}),'')
         return ExecResult(0,'-P OUTPUT DROP','')
@@ -124,7 +124,7 @@ def seeded(tmp_path, online=True):
     platform.db.set_setting('quotas',{**platform.db.get_setting('quotas'),'build_min_free_gb':0})
     for version in ('old','new'):
         platform.sites.version_dir('service',version).mkdir(parents=True)
-        platform.db.set_setting('source-ready:hertogs-app-service-'+version,True)
+        platform.db.set_setting('source-ready:mcp-hosting-app-service-'+version,True)
     if online:
         runtime.start('service','old')
     docker.events.clear()
@@ -150,13 +150,13 @@ def test_crash_after_start_stops_new_workers_before_restoring_old(tmp_path):
         raise Crash()
     r.start=crash
     with pytest.raises(Crash): r._run('release','service','new',False)
-    assert d.containers['hertogs-app-service-new-worker']['State']=='running'
+    assert d.containers['mcp-hosting-app-service-new-worker']['State']=='running'
     d.events.clear()
     recovered=Runtime(p,d)
     recovered.reconcile()
-    assert d.containers['hertogs-app-service-new-worker']['State']=='exited'
-    assert d.containers['hertogs-app-service-old-worker']['State']=='running'
-    assert d.events.index(('stop','hertogs-app-service-new-worker')) < d.events.index(('start','hertogs-app-service-old-worker'))
+    assert d.containers['mcp-hosting-app-service-new-worker']['State']=='exited'
+    assert d.containers['mcp-hosting-app-service-old-worker']['State']=='running'
+    assert d.events.index(('stop','mcp-hosting-app-service-new-worker')) < d.events.index(('start','mcp-hosting-app-service-old-worker'))
     assert p.db.query_one("SELECT status FROM operations WHERE id='release'")['status']=='interrupted'
 
 
@@ -168,9 +168,9 @@ def test_released_preview_stays_stopped_and_schedules_run(tmp_path):
     r._run('release','service','new',False)
     d.events.clear()
     r.reconcile()
-    assert d.containers['hertogs-app-service-new-web-preview']['State']=='exited'
+    assert d.containers['mcp-hosting-app-service-new-web-preview']['State']=='exited'
     assert not any(event[0]=='start' and event[1].endswith('-preview') for event in d.events)
-    assert d.containers['hertogs-app-service-new-scheduled']['State']=='running'
+    assert d.containers['mcp-hosting-app-service-new-scheduled']['State']=='running'
 
 
 def test_cleanup_stops_offline_and_orphaned_apps_without_pomerium(tmp_path):
@@ -201,7 +201,7 @@ def test_runtime_log_history_uses_stage_window_unless_explicitly_granted(tmp_pat
 
 def test_docker_logs_cutoff_is_fractional_unix_time():
     import httpx
-    from hertogs_platform.common.docker_client import DockerClient
+    from mcp_hosting_platform.common.docker_client import DockerClient
     requests=[]
     def logs(request):
         requests.append(request)
@@ -236,12 +236,12 @@ def test_gaming_caps_normal_edits_new_versions_and_restores_limits(tmp_path):
     p,g,r,d=seeded(tmp_path)
     g.db.set_setting('gaming_state',{'state':'on'})
     r.apply_cpu_limits()
-    worker='hertogs-app-service-old-worker'
+    worker='mcp-hosting-app-service-old-worker'
     assert d.inspect_container(worker)['HostConfig']['NanoCpus']==500000000
     r.set_resources('service',{'version':'old','cpus':2,'memory_mb':128,'storage_gb':2},OWNER)
     assert d.inspect_container(worker)['HostConfig']['NanoCpus']==500000000
     r.start('service','new')
-    assert d.inspect_container('hertogs-app-service-new-worker')['HostConfig']['NanoCpus']==500000000
+    assert d.inspect_container('mcp-hosting-app-service-new-worker')['HostConfig']['NanoCpus']==500000000
     g.db.set_setting('gaming_state',{'state':'off'})
     r.apply_cpu_limits()
     assert d.inspect_container(worker)['HostConfig']['NanoCpus']==2000000000
@@ -278,7 +278,7 @@ def test_backend_diffs_show_code_and_exact_source(tmp_path,filename):
 
 
 def test_failed_online_routing_approval_stops_started_workers(tmp_path):
-    from hertogs_platform.deployer.core import RouteError
+    from mcp_hosting_platform.deployer.core import RouteError
     p,_,r,d=seeded(tmp_path)
     p.set_online('service',False,OWNER)
     def fail(*args,**kwargs): raise RouteError('Routing unavailable')
@@ -312,10 +312,10 @@ def test_failed_rollback_stops_partial_revision_before_resuming_live(tmp_path):
     r.resume=fail
     with pytest.raises(ValueError): p.rollback('service',OWNER,expected_version='new')
     assert p.db.app('service')['live_version']=='old'
-    assert d.containers['hertogs-app-service-old-worker']['State']=='running'
-    assert d.containers['hertogs-app-service-new-worker']['State']=='exited'
-    stopped=d.events.index(('stop','hertogs-app-service-new-worker'))
-    restarted=max(i for i,event in enumerate(d.events) if event==('start','hertogs-app-service-old-worker'))
+    assert d.containers['mcp-hosting-app-service-old-worker']['State']=='running'
+    assert d.containers['mcp-hosting-app-service-new-worker']['State']=='exited'
+    stopped=d.events.index(('stop','mcp-hosting-app-service-new-worker'))
+    restarted=max(i for i,event in enumerate(d.events) if event==('start','mcp-hosting-app-service-old-worker'))
     assert stopped<restarted
 
 
@@ -324,7 +324,7 @@ def test_reconcile_rejoins_restarted_gateway_namespace(tmp_path):
     r.start('service','old')
     for c in d.containers.values(): c['StartedAt']='2026-10-07T10:00:00Z'
     gateway=runtime_gateway_name('service','old')
-    worker='hertogs-app-service-old-worker'
+    worker='mcp-hosting-app-service-old-worker'
     d.containers[gateway]['StartedAt']='2026-10-07T10:01:00Z'
     d.events=[]
     r.reconcile()
@@ -334,7 +334,7 @@ def test_reconcile_rejoins_restarted_gateway_namespace(tmp_path):
 
 
 def test_gateway_dns_names_and_routes_fit_longest_app_revision(tmp_path):
-    from hertogs_platform.deployer import pomerium
+    from mcp_hosting_platform.deployer import pomerium
     name='a'*30;version='b'*32
     live=runtime_gateway_name(name,version)
     preview=runtime_gateway_name(name,version,True)
@@ -353,17 +353,17 @@ def test_recovery_migrates_legacy_gateway_without_replaying_tasks(tmp_path):
         conn.execute("UPDATE runtime_versions SET manifest=? WHERE app='service' AND version_id='old'",(json.dumps(manifest),))
     r.start('service','old')
     gateway=runtime_gateway_name('service','old')
-    legacy='hertogs-app-service-old-gateway'
+    legacy='mcp-hosting-app-service-old-gateway'
     d.containers[legacy]=d.containers.pop(gateway)
     for c in d.containers.values():
-        if c['Labels'].get('be.hertogs.component'):
+        if c['Labels'].get('mcp-hosting-workspace.component'):
             c['HostConfig']['NetworkMode']='container:'+legacy
     d.events=[]
     r.reconcile()
     assert legacy not in d.containers and d.containers[gateway]['State']=='running'
-    worker='hertogs-app-service-old-worker'
+    worker='mcp-hosting-app-service-old-worker'
     assert d.containers[worker]['HostConfig']['NetworkMode']=='container:'+gateway
-    assert ('start','hertogs-app-service-old-task') not in d.events
+    assert ('start','mcp-hosting-app-service-old-task') not in d.events
 
 
 def test_source_paging_exposes_remaining_code_and_marks_truncated_diff(tmp_path):

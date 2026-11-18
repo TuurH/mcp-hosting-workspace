@@ -12,12 +12,12 @@ from typing import Any
 
 import pytest
 
-from hertogs_platform.common.docker_client import ExecResult, demux
-from hertogs_platform.common.names import name_problem
-from hertogs_platform.common.tarsafe import UnsafeArchive, extract_untrusted
-from hertogs_platform.deployer import logs
-from hertogs_platform.deployer.db import Database
-from hertogs_platform.deployer.gaming import Gaming
+from mcp_hosting_platform.common.docker_client import ExecResult, demux
+from mcp_hosting_platform.common.names import name_problem
+from mcp_hosting_platform.common.tarsafe import UnsafeArchive, extract_untrusted
+from mcp_hosting_platform.deployer import logs
+from mcp_hosting_platform.deployer.db import Database
+from mcp_hosting_platform.deployer.gaming import Gaming
 from platform_helpers import deployer_settings, site_archive
 
 
@@ -88,7 +88,7 @@ def _extract_peak_kb(path: Path, out: Path) -> tuple[str, int]:
     probe = (
         "import re, sys\n"
         "from pathlib import Path\n"
-        "from hertogs_platform.common.tarsafe import UnsafeArchive, extract_untrusted\n"
+        "from mcp_hosting_platform.common.tarsafe import UnsafeArchive, extract_untrusted\n"
         "try:\n"
         "    extract_untrusted(Path(sys.argv[1]), Path(sys.argv[2]))\n"
         "    verdict = 'extracted'\n"
@@ -311,7 +311,7 @@ class FakeDocker:
         return not self.gone
 
     def inspect_container(self, name: str) -> dict[str, Any]:
-        from hertogs_platform.common.docker_client import DockerError
+        from mcp_hosting_platform.common.docker_client import DockerError
         if self.gone:
             raise DockerError(404, "No such container")
         if self.fail_inspect:
@@ -320,7 +320,7 @@ class FakeDocker:
         return {"Id": self.id, "HostConfig": dict(self.limits), "State": {"Paused": self.paused}}
 
     def pause_container(self, name: str) -> None:
-        from hertogs_platform.common.docker_client import DockerError
+        from mcp_hosting_platform.common.docker_client import DockerError
         if self.gone or self.fail_pause:
             raise DockerError(404 if self.gone else 409, "cannot pause")
         if self.paused:
@@ -332,7 +332,7 @@ class FakeDocker:
 
     def unpause_container(self, name: str) -> None:
         if self.fail_unpause:
-            from hertogs_platform.common.docker_client import DockerError
+            from mcp_hosting_platform.common.docker_client import DockerError
             self.fail_unpause -= 1
             raise DockerError(500, "unpause failed")
         self.paused = False
@@ -343,7 +343,7 @@ class FakeDocker:
 
     def update_container(self, name: str, **resources: int) -> None:
         if self.fail_updates:
-            from hertogs_platform.common.docker_client import DockerError
+            from mcp_hosting_platform.common.docker_client import DockerError
             raise DockerError(500, "update failed")
         self.updates.append(resources)
         self.limits.update(resources)
@@ -353,7 +353,7 @@ class FakeDocker:
         assert config["HostConfig"]["NetworkMode"] == "none"
         if "gpu_reaper" in " ".join(config["Entrypoint"]):
             host = config["HostConfig"]
-            assert host["PidMode"] == "container:hertogs-ai-workspace"
+            assert host["PidMode"] == "container:mcp-hosting-workspace"
             assert host["CapDrop"] == ["ALL"] and set(host["CapAdd"]) == {"KILL", "SYS_PTRACE", "DAC_READ_SEARCH"}
             if self.broken_reaper:
                 self.broken_reaper -= 1
@@ -589,7 +589,7 @@ def test_workspace_stays_frozen_while_gpu_work_cannot_be_checked(tmp_path):
 
     def helper_fails_when_frozen(config, timeout=120.0, max_output=0):
         if config["Cmd"][1:] == ["--frozen"]:
-            from hertogs_platform.common.docker_client import DockerError
+            from mcp_hosting_platform.common.docker_client import DockerError
             raise DockerError(500, "no space left on device")
         return original(config, timeout, max_output)
     docker.run_capture = helper_fails_when_frozen  # type: ignore[method-assign]
@@ -612,7 +612,7 @@ def test_turning_off_resumes_a_held_freeze(tmp_path):
 
     def helper_fails_when_frozen(config, timeout=120.0, max_output=0):
         if config["Cmd"][1:] == ["--frozen"]:
-            from hertogs_platform.common.docker_client import DockerError
+            from mcp_hosting_platform.common.docker_client import DockerError
             raise DockerError(500, "no space left on device")
         return original(config, timeout, max_output)
     docker.run_capture = helper_fails_when_frozen  # type: ignore[method-assign]
@@ -673,7 +673,7 @@ def test_a_saved_held_freeze_stays_when_a_later_save_fails(tmp_path, monkeypatch
 
     def helper_fails_when_frozen(config, timeout=120.0, max_output=0):
         if config["Cmd"][1:] == ["--frozen"]:
-            from hertogs_platform.common.docker_client import DockerError
+            from mcp_hosting_platform.common.docker_client import DockerError
             raise DockerError(500, "no space left on device")
         return original(config, timeout, max_output)
     docker.run_capture = helper_fails_when_frozen  # type: ignore[method-assign]
@@ -811,7 +811,7 @@ def test_gaming_reports_failures_and_retries_restore(tmp_path):
 def test_gaming_api_status_codes(tmp_path):
     from starlette.testclient import TestClient
 
-    from hertogs_platform.deployer.api import build_full_app
+    from mcp_hosting_platform.deployer.api import build_full_app
     from platform_helpers import make_platform
 
     platform, _ = make_platform(tmp_path)
@@ -827,7 +827,7 @@ def test_gaming_api_status_codes(tmp_path):
 def test_owner_sees_and_kills_gpu_processes(tmp_path):
     from starlette.testclient import TestClient
 
-    from hertogs_platform.deployer.api import build_full_app
+    from mcp_hosting_platform.deployer.api import build_full_app
     from platform_helpers import make_platform
 
     platform, _ = make_platform(tmp_path)
@@ -837,7 +837,7 @@ def test_owner_sees_and_kills_gpu_processes(tmp_path):
     report = client.get("/v1/gpu").json()
     assert report["count"] == 3 and report["paused"] is False and report["kcmp"] is True
     assert report["sample"][0]["reason"] == "GPU device open"
-    killed = client.post("/v1/gpu/kill", json={"pid": 100}, headers={"X-Actor": "owner@hertogs.test"})
+    killed = client.post("/v1/gpu/kill", json={"pid": 100}, headers={"X-Actor": "owner@mcp-hosting.test"})
     assert killed.status_code == 200 and killed.json()["pid"] == 100
     assert [p["pid"] for p in docker.gpu] == [101, 102]
     assert client.post("/v1/gpu/kill", json={"pid": 999}).status_code == 400  # gone already
@@ -854,7 +854,7 @@ def test_owner_sees_and_kills_gpu_processes(tmp_path):
 def test_the_ai_cannot_reach_the_gpu_page(tmp_path):
     from starlette.testclient import TestClient
 
-    from hertogs_platform.deployer.api import build_narrow_app
+    from mcp_hosting_platform.deployer.api import build_narrow_app
     from platform_helpers import make_platform
 
     platform, _ = make_platform(tmp_path)
@@ -906,7 +906,7 @@ def test_mcp_tools_talk_to_the_deployer(workspace_root, tmp_path, monkeypatch):
     from starlette.testclient import TestClient
 
     from app import platform_tools, server
-    from hertogs_platform.deployer.api import build_narrow_app
+    from mcp_hosting_platform.deployer.api import build_narrow_app
     from platform_helpers import make_platform
 
     platform, gaming = make_platform(tmp_path)

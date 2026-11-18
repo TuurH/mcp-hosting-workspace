@@ -28,7 +28,7 @@
 	root * /srv/sites/{http.request.host}/current
 	header {
 		# Lets the deployer's probe tell the static server from Pomerium's own pages.
-		X-Hertogs-Static "1"
+		X-MCP-Hosting-Static "1"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
@@ -37,7 +37,7 @@
 		hide .*
 	}
 	handle_errors {
-		header X-Hertogs-Static "1"
+		header X-MCP-Hosting-Static "1"
 		header -Server
 		respond "{err.status_code} {err.status_text}" {err.status_code}
 	}

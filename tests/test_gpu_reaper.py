@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from hertogs_platform.deployer import gpu_reaper
+from mcp_hosting_platform.deployer import gpu_reaper
 
 STAND_IN = {(1, 5)}
 

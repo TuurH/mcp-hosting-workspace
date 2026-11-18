@@ -4,12 +4,12 @@ import json
 import time
 import tarfile
 import httpx
-from hertogs_platform.common.docker_client import DockerClient
-from hertogs_platform.common.names import runtime_gateway_name
+from mcp_hosting_platform.common.docker_client import DockerClient
+from mcp_hosting_platform.common.names import runtime_gateway_name
 
-client=httpx.Client(transport=httpx.HTTPTransport(uds='/run/hertogs/deployer.sock'),base_url='http://deployer',timeout=180)
+client=httpx.Client(transport=httpx.HTTPTransport(uds='/run/mcp-hosting-workspace/deployer.sock'),base_url='http://deployer',timeout=180)
 docker=DockerClient()
-base_image='hertogs/platform:local'
+base_image='mcp-hosting-workspace/platform:local'
 created=[]
 
 
@@ -54,7 +54,7 @@ try:
     assert submitted.status_code==200,submitted.text
     created.append('runtimecheck'); version=submitted.json()['version']
     assert submitted.json()['live_version'] is None
-    prefix='hertogs-app-runtimecheck-'+version
+    prefix='mcp-hosting-app-runtimecheck-'+version
     saved=client.put('/v1/apps/runtimecheck/secrets/SERVICE_TOKEN',json={'value':'integration-runtime-value'})
     assert saved.status_code==200 and 'integration-runtime-value' not in saved.text
     # Preview receives no production data, credentials, worker or task effects.
@@ -123,7 +123,7 @@ try:
     assert release.status_code==200,release.text
     detail=wait_operation('runtimecheck')
     assert detail['live_version']==next_version and not detail['online']
-    assert not docker.container_exists('hertogs-app-runtimecheck-'+next_version+'-worker')
+    assert not docker.container_exists('mcp-hosting-app-runtimecheck-'+next_version+'-worker')
     rollback=client.post('/v1/apps/runtimecheck/rollback',json={'version':version})
     assert rollback.status_code==200,rollback.text
     assert not docker.inspect_container(prefix+'-worker')['State']['Running']

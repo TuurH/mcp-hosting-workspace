@@ -7,7 +7,7 @@ import tarfile
 import httpx
 import pytest
 
-from hertogs_platform.common.docker_client import DockerClient, DockerError
+from mcp_hosting_platform.common.docker_client import DockerClient, DockerError
 
 
 def image_archive(tags=None):
@@ -92,7 +92,7 @@ def test_load_requires_one_confirmed_image(events):
 
 
 def test_load_still_refuses_builder_supplied_tags():
-    archive, _ = image_archive(["hertogs/platform:local"])
+    archive, _ = image_archive(["mcp-hosting-workspace/platform:local"])
     client, requests = client_with_response([])
     try:
         with pytest.raises(ValueError, match="one untagged Docker image"):

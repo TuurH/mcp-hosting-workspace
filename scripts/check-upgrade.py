@@ -11,8 +11,8 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'platform'))
-from hertogs_platform.deployer.db import Database
-from hertogs_platform.deployer.capabilities import permissions
+from mcp_hosting_platform.deployer.db import Database
+from mcp_hosting_platform.deployer.capabilities import permissions
 
 
 def main(source: Path) -> None:

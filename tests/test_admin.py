@@ -11,16 +11,16 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from starlette.testclient import TestClient
 
-from hertogs_platform.admin.app import build_app, summarize_request
-from hertogs_platform.admin.config import AdminSettings
-from hertogs_platform.admin.deployer_client import DeployerError
-from hertogs_platform.admin.filemanager import FileError, FileManager
-from hertogs_platform.admin.security import csrf_token
-from hertogs_platform.common.access import AccessVerifier
+from mcp_hosting_platform.admin.app import build_app, summarize_request
+from mcp_hosting_platform.admin.config import AdminSettings
+from mcp_hosting_platform.admin.deployer_client import DeployerError
+from mcp_hosting_platform.admin.filemanager import FileError, FileManager
+from mcp_hosting_platform.admin.security import csrf_token
+from mcp_hosting_platform.common.access import AccessVerifier
 
 TEAM = "https://team.cloudflareaccess.com"
 AUD = "aud-admin"
-OWNER = "owner@hertogs.test"
+OWNER = "owner@mcp-hosting.test"
 HOST = "admin.example.com"
 ORIGIN = f"https://{HOST}"
 _KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -165,7 +165,7 @@ def test_workspace_polling_reuses_storage_scan(admin, monkeypatch):
 def test_requires_owner_token(admin):
     _, _, client = admin
     assert client.get("/").status_code == 403
-    assert client.get("/", headers={"Cf-Access-Jwt-Assertion": token(email="other@hertogs.test")}).status_code == 403
+    assert client.get("/", headers={"Cf-Access-Jwt-Assertion": token(email="other@mcp-hosting.test")}).status_code == 403
     assert client.get("/", headers={"Cf-Access-Jwt-Assertion": token(aud=["other"])}).status_code == 403
     assert client.get("/", headers={"Cf-Access-Jwt-Assertion": token(email=None)}).status_code == 403
     response = client.get("/", headers=owner_headers())
@@ -211,7 +211,7 @@ def test_local_mode_needs_the_login_link(tmp_path):
     # The link works once, and the token itself is not a session.
     assert client.get("/local-login", params={"token": "t" * 32}).status_code == 403
     other = TestClient(build_app(s, deployer=deployer), base_url="http://localhost:8088")
-    other.cookies.set("hertogs_admin_local", "t" * 32)
+    other.cookies.set("mcp_hosting_admin_local", "t" * 32)
     assert other.get("/").status_code == 403
     token = csrf_token(s, OWNER)
     evil = {"Origin": "http://localhost.evil.example", "Sec-Fetch-Site": "same-origin"}
@@ -289,7 +289,7 @@ def test_csrf_header_works_for_fetch(admin):
 
 def test_csrf_token_is_bound_to_the_owner(tmp_path):
     s = settings(tmp_path)
-    assert csrf_token(s, OWNER) != csrf_token(s, "other@hertogs.test")
+    assert csrf_token(s, OWNER) != csrf_token(s, "other@mcp-hosting.test")
     assert csrf_token(s, OWNER) != csrf_token(settings(tmp_path, csrf_key="z" * 40), OWNER)
 
 
@@ -429,7 +429,7 @@ def test_file_manager_never_writes_through_links(fm):
 
 
 def test_trash_symlink_never_reaches_outside(fm, tmp_path):
-    outside = tmp_path / "run-hertogs"
+    outside = tmp_path / "run-mcp-hosting"
     outside.mkdir()
     (outside / "deployer.sock").write_text("socket")
     os.symlink(outside, fm.root / ".trash")  # planted by the AI
@@ -529,7 +529,7 @@ def test_exact_source_view_is_owner_only_and_plain_text(admin):
 
 
 def test_release_prerequisites_follow_pending_revision_not_live():
-    from hertogs_platform.admin.app import release_checklist
+    from mcp_hosting_platform.admin.app import release_checklist
     pending = {'dockerfile': 'Dockerfile', 'secrets': ['SERVICE_TOKEN'], 'capabilities': {'gpu': True}}
     app = {'kind': 'runtime', 'live_version': 'live', 'pending_version': 'next',
            'manifests': {'next': pending}, 'capabilities': {},
@@ -547,7 +547,7 @@ def test_release_prerequisites_follow_pending_revision_not_live():
 
 
 def test_simple_app_has_no_unrelated_release_prerequisites():
-    from hertogs_platform.admin.app import release_checklist
+    from mcp_hosting_platform.admin.app import release_checklist
     assert release_checklist({'kind': 'static', 'pending_version': 'next'}) == []
     checks = release_checklist({'kind': 'runtime', 'pending_version': 'next', 'manifests': {'next': {}}})
     assert checks == []
@@ -568,7 +568,7 @@ def test_deployer_client_keeps_slow_calls_alive_while_fast_calls_finish(tmp_path
     from starlette.responses import JSONResponse
     from starlette.routing import Route
 
-    from hertogs_platform.admin.deployer_client import DeployerClient
+    from mcp_hosting_platform.admin.deployer_client import DeployerClient
 
     async def slow(request):
         await asyncio.sleep(0.6)
@@ -608,7 +608,7 @@ def test_deployer_client_keeps_slow_calls_alive_while_fast_calls_finish(tmp_path
 def test_deployer_client_reports_unreachable_and_never_repeats_a_change(tmp_path):
     import asyncio
 
-    from hertogs_platform.admin.deployer_client import DeployerClient
+    from mcp_hosting_platform.admin.deployer_client import DeployerClient
 
     async def scenario():
         client = DeployerClient(str(tmp_path / "missing.sock"))

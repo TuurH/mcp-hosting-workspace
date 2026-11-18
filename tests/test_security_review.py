@@ -14,45 +14,45 @@ from starlette.testclient import TestClient
 from starlette.applications import Starlette
 from starlette.routing import Route
 
-from hertogs_platform.common.docker_client import ExecResult
-from hertogs_platform.deployer.api import build_full_app, build_narrow_app
-from hertogs_platform.deployer.capabilities import actions
+from mcp_hosting_platform.common.docker_client import ExecResult
+from mcp_hosting_platform.deployer.api import build_full_app, build_narrow_app
+from mcp_hosting_platform.deployer.capabilities import actions
 from platform_helpers import API_TOKEN, OWNER
 from test_operations import add_revision
 from test_runtime_recovery import seeded
-from hertogs_platform.admin.filemanager import FileManager, FileError, OpenedFileResponse
-from hertogs_platform.common.http_probe import observe
-from hertogs_platform.deployer.sites import Sites
+from mcp_hosting_platform.admin.filemanager import FileManager, FileError, OpenedFileResponse
+from mcp_hosting_platform.common.http_probe import observe
+from mcp_hosting_platform.deployer.sites import Sites
 
 
 def test_cache_cleanup_ignores_foreign_volumes_even_with_a_similar_name(tmp_path):
     p, _, r, d = seeded(tmp_path)
     volumes = [
         ('owner-buildcache', {}),
-        ('hertogs-app-owner-buildcache', {}),
-        ('hertogs-app-other-buildcache', {'be.hertogs.buildcache':'mismatch'}),
-        ('hertogs-app-owned-buildcache', {'be.hertogs.buildcache':'owned'}),
+        ('mcp-hosting-app-owner-buildcache', {}),
+        ('mcp-hosting-app-other-buildcache', {'mcp-hosting-workspace.buildcache':'mismatch'}),
+        ('mcp-hosting-app-owned-buildcache', {'mcp-hosting-workspace.buildcache':'owned'}),
     ]
     for name, labels in volumes:
         d.ensure_volume(name, backup=False, labels=labels)
     d.volume_usage = lambda: [dict(Name=name, Labels=labels, UsageData={'Size':1024**3}) for name, labels in volumes]
     r.meter.refresh(wait=True)
-    assert set(r.meter.cache_volumes()) == {'hertogs-app-owned-buildcache'}
+    assert set(r.meter.cache_volumes()) == {'mcp-hosting-app-owned-buildcache'}
     p.db.set_setting('quotas', {**p.db.get_setting('quotas'), 'build_cache_total_gb':0})
     r.image_builds._make_room('service')
-    assert 'hertogs-app-owned-buildcache' not in d.volumes
+    assert 'mcp-hosting-app-owned-buildcache' not in d.volumes
     assert all(name in d.volumes for name, _ in volumes[:3])
     with pytest.raises(ValueError, match='does not own'):
         r.image_builds._prepare_cache('owner', 'builder')
     assert r.image_builds.delete_cache('owner') == {'deleted':False}
-    assert 'hertogs-app-owner-buildcache' in d.volumes
+    assert 'mcp-hosting-app-owner-buildcache' in d.volumes
 
 
 def test_cache_ownership_is_rechecked_after_the_measurement(tmp_path):
     _, _, r, d = seeded(tmp_path)
-    name = 'hertogs-app-owner-buildcache'
-    d.ensure_volume(name, backup=False, labels={'be.hertogs.buildcache':'owner'})
-    d.volume_usage = lambda: [dict(Name=name, Labels={'be.hertogs.buildcache':'owner'}, UsageData={'Size':100*1024**3})]
+    name = 'mcp-hosting-app-owner-buildcache'
+    d.ensure_volume(name, backup=False, labels={'mcp-hosting-workspace.buildcache':'owner'})
+    d.volume_usage = lambda: [dict(Name=name, Labels={'mcp-hosting-workspace.buildcache':'owner'}, UsageData={'Size':100*1024**3})]
     r.meter.refresh(wait=True)
     d.volumes[name]['Labels'] = {}  # owner replaced it after the scan
     r.image_builds._make_room('service')

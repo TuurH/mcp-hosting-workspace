@@ -8,8 +8,8 @@
 #
 #   tests/integration/gpu_reaper.sh [image]
 set -euo pipefail
-IMAGE="${1:-hertogs/platform:local}"
-NAME="hertogs-reaper-target-$$"
+IMAGE="${1:-mcp-hosting-workspace/platform:local}"
+NAME="mcp-hosting-reaper-target-$$"
 cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
@@ -42,7 +42,7 @@ reaper() {
   docker run --rm --pid "container:$NAME" --network none --read-only --user 0 \
     --cap-drop ALL --cap-add KILL --cap-add SYS_PTRACE --cap-add DAC_READ_SEARCH --security-opt no-new-privileges:true \
     -e GPU_REAPER_DEVICES='^/dev/zero$' -e GPU_REAPER_TEST_DEVICES='1:5' -e GPU_REAPER_TEST_DEADLINE="${DEADLINE:-}" \
-    --entrypoint python "$IMAGE" -m hertogs_platform.deployer.gpu_reaper "$@"
+    --entrypoint python "$IMAGE" -m mcp_hosting_platform.deployer.gpu_reaper "$@"
 }
 field() { python3 -c "import json,sys; print(json.load(sys.stdin)['$1'])"; }
 

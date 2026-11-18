@@ -21,7 +21,7 @@ fi
 
 OVERLAY_SITE="$('/workspace/.venv/bin/python' -c 'import site; print(site.getsitepackages()[0])')"
 BASE_SITE="$('/opt/venv/bin/python' -c 'import site; print(site.getsitepackages()[0])')"
-printf '%s\n' "$BASE_SITE" >"${OVERLAY_SITE}/hertogs-base-packages.pth"
+printf '%s\n' "$BASE_SITE" >"${OVERLAY_SITE}/mcp-hosting-base-packages.pth"
 
 export VIRTUAL_ENV=/workspace/.venv
 export PATH="/workspace/.venv/bin:/opt/venv/bin:/home/ai/.local/bin:${PATH}"

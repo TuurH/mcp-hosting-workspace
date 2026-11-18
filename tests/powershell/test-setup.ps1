@@ -2,11 +2,12 @@
 # Runs on Windows PowerShell 5.1 and PowerShell 7.
 $ErrorActionPreference = "Stop"
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("hertogs-setup-test-" + [guid]::NewGuid().ToString("N"))
+$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("mcp-hosting-setup-test-" + [guid]::NewGuid().ToString("N"))
 $originalLocation = Get-Location
 $testState = @{
     Calls = New-Object 'System.Collections.Generic.List[string]'
     FailBuilderPull = $false
+    HasRestoreImage = $false
 }
 
 # Native helpers call this fake Docker command; no real daemon is contacted.
@@ -20,11 +21,16 @@ function docker {
             if ($testState.FailBuilderPull) { $global:LASTEXITCODE = 1 }
             return
         }
-        '^image ls --quiet ' { return } # Empty image cache on a fresh install.
+        '^image ls --quiet ' {
+            if ($testState.HasRestoreImage -and $command -eq 'image ls --quiet mcp-hosting-workspace/platform:local') {
+                "test-image"
+            }
+            return
+        }
         '^pull nvidia/cuda:' { return }
         '^run --rm --gpus all .* nvidia-smi$' { "test GPU"; return }
         '^compose build$' { return }
-        '^run --rm --network none hertogs/platform:local python -m hertogs_platform.setup_secrets ' {
+        '^run --rm --network none mcp-hosting-workspace/platform:local python -m mcp_hosting_platform.setup_secrets ' {
             foreach ($name in @("DEPLOYER_SECRETS_KEY", "POMERIUM_SHARED_SECRET", "POMERIUM_COOKIE_SECRET", "POMERIUM_SIGNING_KEY")) {
                 "$name=test-only-value"
             }
@@ -77,6 +83,18 @@ try {
     try { & $setup -BuildOnly } catch { $failure = $_ }
     Check "failed builder download reports the missing prerequisite" ($null -ne $failure -and $failure.Exception.Message -like "*BuildKit*")
     Check "failed builder download prevents image builds and startup" (-not $testState.Calls.Contains("compose build") -and @($testState.Calls | Where-Object { $_ -like "compose up *" }).Count -eq 0)
+
+    Copy-Item (Join-Path $repo "scripts/restore.ps1") (Join-Path $scripts "restore.ps1")
+    $backup = Join-Path $tmp "other-installation"
+    New-Item -ItemType Directory -Path $backup | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $backup "manifest.json"), '{"volumes":["other-deployer-data"]}')
+    [System.IO.File]::WriteAllText((Join-Path $backup "volume-other-deployer-data.tar.gz"), '')
+    $testState.Calls.Clear()
+    $testState.HasRestoreImage = $true
+    $failure = $null
+    try { & (Join-Path $scripts "restore.ps1") -Backup $backup -Force } catch { $failure = $_ }
+    Check "restore refuses a backup from a different Docker namespace" ($null -ne $failure -and $failure.Exception.Message -like "*different Docker namespace*")
+    Check "foreign backup is refused before touching containers or volumes" (@($testState.Calls | Where-Object { $_ -notmatch '^info |^image ls ' }).Count -eq 0)
 }
 finally {
     Set-Location $originalLocation

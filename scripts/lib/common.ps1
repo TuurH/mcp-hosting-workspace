@@ -129,7 +129,7 @@ function Get-HttpStatus {
     $client = New-Object System.Net.Http.HttpClient($handler)
     $client.Timeout = [TimeSpan]::FromSeconds(15)
     # Cloudflare's Browser Integrity Check challenges requests without a User-Agent.
-    [void]$client.DefaultRequestHeaders.UserAgent.TryParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) hertogs-test-local/1")
+    [void]$client.DefaultRequestHeaders.UserAgent.TryParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) mcp-hosting-test-local/1")
     try {
         $response = $client.GetAsync($Url).GetAwaiter().GetResult()
         $header = {
@@ -227,20 +227,20 @@ function Remove-ManagedAppContainers {
     # Dynamic apps have no Compose labels. Remove their containers before replacing
     # data, so old images, environments and namespaces cannot survive a restore.
     # Volumes are retained. The deployer MUST be stopped before calling this.
-    $listed = Invoke-Native docker @("ps", "-aq", "--filter", "label=be.hertogs.app")
+    $listed = Invoke-Native docker @("ps", "-aq", "--filter", "label=mcp-hosting-workspace.app")
     if ($listed.ExitCode -ne 0) { throw "Cannot list application containers before restore." }
     foreach ($container in @($listed.Output | Where-Object { $_ })) {
         $removed = Invoke-Native docker @("container", "rm", "--force", $container)
         if ($removed.ExitCode -ne 0) { throw "Cannot stop/remove application container $container; restore aborted." }
     }
-    $remaining = Invoke-Native docker @("ps", "-aq", "--filter", "label=be.hertogs.app")
+    $remaining = Invoke-Native docker @("ps", "-aq", "--filter", "label=mcp-hosting-workspace.app")
     if ($remaining.ExitCode -ne 0 -or @($remaining.Output | Where-Object { $_ }).Count -gt 0) {
         throw "Application containers remain; restore aborted before replacing data."
     }
 }
 
 function Select-BackupsToKeep {
-    # Input: backup folder names "hertogs-yyyyMMdd-HHmmss". Keeps the newest backup of
+    # Input: backup folder names "mcp-hosting-yyyyMMdd-HHmmss". Keeps the newest backup of
     # each of the last $Daily days that have backups, plus the newest of each of the
     # $Weekly most recent ISO weeks older than those days. Returns the names to keep.
     param(
@@ -248,11 +248,12 @@ function Select-BackupsToKeep {
         [int] $Daily = 7,
         [int] $Weekly = 4
     )
-    $sorted = @($Names | Where-Object { $_ -match '^hertogs-\d{8}-\d{6}$' } | Sort-Object -Descending)
+    $sorted = @($Names | Where-Object { $_ -match '^mcp-hosting-\d{8}-\d{6}$' } | Sort-Object -Descending)
+    $dateOffset = "mcp-hosting-".Length
     $keep = New-Object 'System.Collections.Generic.List[string]'
     $days = New-Object 'System.Collections.Generic.List[string]'
     foreach ($name in $sorted) {
-        $day = $name.Substring(8, 8)
+        $day = $name.Substring($dateOffset, 8)
         if (-not $days.Contains($day)) {
             if ($days.Count -ge $Daily) { break }
             $days.Add($day)
@@ -262,7 +263,7 @@ function Select-BackupsToKeep {
     $oldestKeptDay = if ($days.Count -gt 0) { $days[$days.Count - 1] } else { "99999999" }
     $weeks = New-Object 'System.Collections.Generic.List[string]'
     foreach ($name in $sorted) {
-        $day = $name.Substring(8, 8)
+        $day = $name.Substring($dateOffset, 8)
         if ($day -ge $oldestKeptDay) { continue }
         $week = Get-IsoWeekKey ([datetime]::ParseExact($day, "yyyyMMdd", $null))
         if (-not $weeks.Contains($week)) {

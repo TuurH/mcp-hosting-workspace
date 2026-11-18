@@ -8,11 +8,11 @@ import pytest
 from starlette.testclient import TestClient
 
 from app.execution import workspace_environment
-from hertogs_platform.deployer.api import build_full_app, build_narrow_app
-from hertogs_platform.deployer.egress import public_addresses, validate_destinations
-from hertogs_platform.deployer.network_guard import rules
-from hertogs_platform.deployer.runtime import Runtime, validate_manifest
-from hertogs_platform.deployer import pomerium
+from mcp_hosting_platform.deployer.api import build_full_app, build_narrow_app
+from mcp_hosting_platform.deployer.egress import public_addresses, validate_destinations
+from mcp_hosting_platform.deployer.network_guard import rules
+from mcp_hosting_platform.deployer.runtime import Runtime, validate_manifest
+from mcp_hosting_platform.deployer import pomerium
 from platform_helpers import API_TOKEN, OWNER, make_platform, site_archive
 
 
@@ -163,7 +163,7 @@ def test_runtime_submission_pins_image_and_full_source_revision(tmp_path):
 
 def test_rotated_logs_and_partial_coverage(tmp_path):
     import gzip,time
-    from hertogs_platform.deployer import logs
+    from mcp_hosting_platform.deployer import logs
     def entry(uri):
         return json.dumps({'ts':time.time(),'request':{'host':'blog.example.com','uri':uri},'status':200})+'\n'
     current=tmp_path/'access.log';current.write_text(entry('/new'))
@@ -180,9 +180,9 @@ def test_app_storage_measurement_does_not_include_similarly_named_apps(tmp_path)
         scans=0
         def volume_usage(self):
             Docker.scans+=1
-            return [{'Name':'hertogs-app-blog-data','UsageData':{'Size':10}},
-                    {'Name':'hertogs-app-blog-other-data','UsageData':{'Size':999}},
-                    {'Name':'hertogs-app-blog-buildcache','UsageData':{'Size':7}}]
+            return [{'Name':'mcp-hosting-app-blog-data','UsageData':{'Size':10}},
+                    {'Name':'mcp-hosting-app-blog-other-data','UsageData':{'Size':999}},
+                    {'Name':'mcp-hosting-app-blog-buildcache','UsageData':{'Size':7}}]
     runtime=Runtime(platform,Docker())
     # A page never waits for a scan: before the first measurement the answer is "unknown", not 0.
     before=runtime.storage('blog')

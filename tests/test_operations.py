@@ -11,12 +11,12 @@ import uuid
 import pytest
 from starlette.testclient import TestClient
 
-from hertogs_platform.common.docker_client import ExecResult
-from hertogs_platform.deployer import oplog
-from hertogs_platform.deployer.api import build_full_app, build_narrow_app
-from hertogs_platform.deployer.capabilities import actions as validate_actions, network
-from hertogs_platform.deployer.core import PlatformError
-from hertogs_platform.deployer.image_builds import cache_hint
+from mcp_hosting_platform.common.docker_client import ExecResult
+from mcp_hosting_platform.deployer import oplog
+from mcp_hosting_platform.deployer.api import build_full_app, build_narrow_app
+from mcp_hosting_platform.deployer.capabilities import actions as validate_actions, network
+from mcp_hosting_platform.deployer.core import PlatformError
+from mcp_hosting_platform.deployer.image_builds import cache_hint
 from platform_helpers import API_TOKEN, OWNER, site_archive
 from test_runtime_recovery import seeded
 
@@ -56,8 +56,8 @@ def hold_readiness_probe(docker):
 
 def running(docker, version):
     return sorted(name for name, c in docker.containers.items()
-                  if c['State'] == 'running' and c['Labels'].get('be.hertogs.version') == version
-                  and c['Labels'].get('be.hertogs.component'))
+                  if c['State'] == 'running' and c['Labels'].get('mcp-hosting-workspace.version') == version
+                  and c['Labels'].get('mcp-hosting-workspace.component'))
 
 
 # ---------------------------------------------------------------- releases and locks
@@ -81,7 +81,7 @@ def test_release_does_not_hold_the_platform_locks_while_the_app_starts(tmp_path)
             p.discard_pending('service', OWNER, 'new')
         # The health pass leaves the containers this release is starting alone.
         r.reconcile()
-        assert running(d, 'new') == ['hertogs-app-service-new-web', 'hertogs-app-service-new-worker']
+        assert running(d, 'new') == ['mcp-hosting-app-service-new-web', 'mcp-hosting-app-service-new-worker']
     finally:
         gate.set()
     done = wait_for(p, operation)
@@ -105,7 +105,7 @@ def test_taking_the_app_offline_during_a_release_stops_the_release(tmp_path):
     assert done['status'] == 'failed' and 'offline' in done['result']['error']
     app = p.db.app('service')
     assert (app['live_version'], app['pending_version'], app['online']) == ('old', 'new', False)
-    assert not any(c['State'] == 'running' for c in d.containers.values() if c['Labels'].get('be.hertogs.component'))
+    assert not any(c['State'] == 'running' for c in d.containers.values() if c['Labels'].get('mcp-hosting-workspace.component'))
 
 
 def test_emergency_lock_does_not_wait_for_a_release(tmp_path):
@@ -136,7 +136,7 @@ def test_failed_release_names_its_phase_restores_the_old_version_and_notifies(tm
     done = wait_for(p, operation)
     assert done['status'] == 'failed' and done['result']['failed_phase'] == 'Waiting for the web port'
     assert p.db.app('service')['live_version'] == 'old'
-    assert running(d, 'old') == ['hertogs-app-service-old-web', 'hertogs-app-service-old-worker']
+    assert running(d, 'old') == ['mcp-hosting-app-service-old-web', 'mcp-hosting-app-service-old-worker']
     assert running(d, 'new') == []
     notices = client.get('/v1/notices', params={'after': cursor['latest']}).json()['notices']
     assert [(n['level'], n['text']) for n in notices] == [('error', 'service: release failed at Waiting for the web port')]
@@ -155,8 +155,8 @@ def test_failed_release_names_its_phase_restores_the_old_version_and_notifies(tm
 
 def test_health_pass_restarts_one_app_without_the_platform_locks_and_obeys_a_later_stop(tmp_path):
     p, _, r, d = seeded(tmp_path)
-    d.stop_container('hertogs-app-service-old-worker')
-    del d.containers['hertogs-app-service-old-web']          # a component is missing: full restart
+    d.stop_container('mcp-hosting-app-service-old-worker')
+    del d.containers['mcp-hosting-app-service-old-web']          # a component is missing: full restart
     gate, reached = hold_readiness_probe(d)
     worker = threading.Thread(target=r.reconcile)
     worker.start()
@@ -176,11 +176,11 @@ def test_health_pass_restarts_one_app_without_the_platform_locks_and_obeys_a_lat
 
 def test_out_of_memory_kill_is_recorded_from_dockers_own_flag(tmp_path):
     p, g, r, d = seeded(tmp_path)
-    d.stop_container('hertogs-app-service-old-worker')
+    d.stop_container('mcp-hosting-app-service-old-worker')
     inspect = d.inspect_container
     def flagged(name):
         info = inspect(name)
-        if name == 'hertogs-app-service-old-worker' and not info['State']['Running']:
+        if name == 'mcp-hosting-app-service-old-worker' and not info['State']['Running']:
             info['State'].update(OOMKilled=True, FinishedAt='2026-11-16T10:00:00Z')
             info['HostConfig']['Memory'] = 128 * 1024**2
         return info
@@ -214,12 +214,12 @@ def test_prune_keeps_source_of_older_revisions_and_removes_only_their_recorded_i
     p.db.set_setting('built-image:service:older', {'image': built, 'network': network({'dns': True})})
     p.db.set_setting('built-image:service:shares', {'image': shared})
     p.db.set_setting('built-image:service:old', {'image': shared})      # the live revision uses the same image
-    d.ensure_volume('hertogs-app-service-older-source')
-    d.create_container('hertogs-app-service-older-web', {'Labels': {'be.hertogs.app': 'service', 'be.hertogs.version': 'older',
-                                                                    'be.hertogs.component': 'web'}})
+    d.ensure_volume('mcp-hosting-app-service-older-source')
+    d.create_container('mcp-hosting-app-service-older-web', {'Labels': {'mcp-hosting-workspace.app': 'service', 'mcp-hosting-workspace.version': 'older',
+                                                                    'mcp-hosting-workspace.component': 'web'}})
     p._prune('service')
     assert removed == [built]                       # by exact ID; never an image a kept revision uses
-    assert 'hertogs-app-service-older-web' not in d.containers and 'hertogs-app-service-older-source' not in d.volumes
+    assert 'mcp-hosting-app-service-older-web' not in d.containers and 'mcp-hosting-app-service-older-source' not in d.volumes
     assert r.manifest('service', 'older') and p.sites.version_dir('service', 'older').is_dir()   # source and manifest stay
     assert p.db.get_setting('build-network:service:older') == network({'dns': True})
     revisions = {item['version']: item for item in p.revisions('service')}
@@ -304,11 +304,11 @@ def test_app_status_for_the_ai_lists_operations_without_their_logs(tmp_path):
 
 
 def test_probe_runs_in_a_gateway_made_from_an_older_platform_image():
-    from hertogs_platform.deployer.runtime import PROBE_SOURCE
+    from mcp_hosting_platform.deployer.runtime import PROBE_SOURCE
     namespace = {}
     exec(compile(PROBE_SOURCE + '\nresult = probe("GET", "http://127.0.0.1:9/", seconds=2)', 'gateway', 'exec'), namespace)
     assert namespace['result'] == {'error': 'ConnectError'}
-    assert 'hertogs_platform' not in PROBE_SOURCE   # nothing the old image may lack
+    assert 'mcp_hosting_platform' not in PROBE_SOURCE   # nothing the old image may lack
 
 
 def test_ai_asks_to_go_back_and_the_owner_applies_it(tmp_path):
@@ -402,7 +402,7 @@ def fake_build_engine(d, scratch, write):
     def start_container(name):
         start(name)
         if name.endswith('-worker'):
-            operation = name[len('hertogs-build-'):-len('-worker')]
+            operation = name[len('mcp-hosting-build-'):-len('-worker')]
             write(scratch / operation)
 
     def follow_logs(name, sink, read_timeout=None):
@@ -425,18 +425,18 @@ def test_image_build_uses_the_app_cache_a_private_scratch_directory_and_a_live_l
     scratch = tmp_path / 'scratch'
     scratch.mkdir()
     object.__setattr__(p.settings, 'build_scratch_dir', str(scratch))
-    object.__setattr__(p.settings, 'build_scratch_volume', 'hertogs-build-scratch')
+    object.__setattr__(p.settings, 'build_scratch_volume', 'mcp-hosting-build-scratch')
     version = buildable(p, r, tmp_path)
     calls = fake_build_engine(d, scratch, lambda directory: (directory / 'image.tar').write_bytes(b'IMAGE-BYTES'))
     operation = uuid.uuid4().hex
     monkeypatch.setattr(r, 'background', lambda name, kind, payload, fn, actor: fn(operation))
     result = r.image_builds.enqueue('buildable', version, {}, OWNER, no_cache=True, refresh_base=True)
     assert result['image'] == 'sha256:' + 'e' * 64 and calls['loaded'] == b'IMAGE-BYTES'
-    config, api_version = calls['created'][f'hertogs-build-{operation}-worker']
+    config, api_version = calls['created'][f'mcp-hosting-build-{operation}-worker']
     assert api_version == 'v1.45'                              # one directory of the scratch volume
     assert config['HostConfig']['Mounts'] == [
-        {'Type': 'volume', 'Source': 'hertogs-app-buildable-buildcache', 'Target': '/home/user/.local/share/buildkit'},
-        {'Type': 'volume', 'Source': 'hertogs-build-scratch', 'Target': '/home/user/out', 'VolumeOptions': {'Subpath': operation}}]
+        {'Type': 'volume', 'Source': 'mcp-hosting-app-buildable-buildcache', 'Target': '/home/user/.local/share/buildkit'},
+        {'Type': 'volume', 'Source': 'mcp-hosting-build-scratch', 'Target': '/home/user/out', 'VolumeOptions': {'Subpath': operation}}]
     assert 'type=docker,dest=/home/user/out/image.tar' in config['Cmd']
     assert config['Cmd'][config['Cmd'].index('no-cache=') - 1] == '--opt'      # "Ignore cached steps"
     assert 'image-resolve-mode=pull' in config['Cmd']
@@ -447,7 +447,7 @@ def test_image_build_uses_the_app_cache_a_private_scratch_directory_and_a_live_l
     assert calls['followed']
     log = r.oplogs.read(operation)['text']
     assert '[build 2/4] RUN pip install' in log and '== Loading the image into Docker' in log and '== Recording dependencies' in log
-    assert d.volumes['hertogs-app-buildable-buildcache']['Labels']['be.hertogs.builder'] == p.settings.builder_image
+    assert d.volumes['mcp-hosting-app-buildable-buildcache']['Labels']['mcp-hosting-workspace.builder'] == p.settings.builder_image
 
 
 def test_image_build_refuses_a_planted_link_as_its_output(tmp_path, monkeypatch):
@@ -457,7 +457,7 @@ def test_image_build_refuses_a_planted_link_as_its_output(tmp_path, monkeypatch)
     secret = tmp_path / 'deployer-secret'
     secret.write_text('do not import me')
     object.__setattr__(p.settings, 'build_scratch_dir', str(scratch))
-    object.__setattr__(p.settings, 'build_scratch_volume', 'hertogs-build-scratch')
+    object.__setattr__(p.settings, 'build_scratch_volume', 'mcp-hosting-build-scratch')
     version = buildable(p, r, tmp_path)
     calls = fake_build_engine(d, scratch, lambda directory: os.symlink(secret, directory / 'image.tar'))
     monkeypatch.setattr(r, 'background', lambda name, kind, payload, fn, actor: fn(uuid.uuid4().hex))
@@ -476,27 +476,27 @@ def test_build_output_fifo_is_refused_without_waiting_for_a_writer(tmp_path):
 
 def test_buildkit_update_resets_the_cache_and_the_owner_can_delete_it(tmp_path):
     p, g, r, d = seeded(tmp_path)
-    d.ensure_volume('hertogs-app-service-buildcache', backup=False, labels={'be.hertogs.buildcache':'service','be.hertogs.builder': 'sha256:old-buildkit'})
-    assert r.image_builds._prepare_cache('service', 'sha256:new-buildkit') == 'hertogs-app-service-buildcache'
-    assert ('remove-volume', 'hertogs-app-service-buildcache') in d.events
-    assert d.volumes['hertogs-app-service-buildcache']['Labels']['be.hertogs.builder'] == 'sha256:new-buildkit'
+    d.ensure_volume('mcp-hosting-app-service-buildcache', backup=False, labels={'mcp-hosting-workspace.buildcache':'service','mcp-hosting-workspace.builder': 'sha256:old-buildkit'})
+    assert r.image_builds._prepare_cache('service', 'sha256:new-buildkit') == 'mcp-hosting-app-service-buildcache'
+    assert ('remove-volume', 'mcp-hosting-app-service-buildcache') in d.events
+    assert d.volumes['mcp-hosting-app-service-buildcache']['Labels']['mcp-hosting-workspace.builder'] == 'sha256:new-buildkit'
     d.events.clear()
     r.image_builds._prepare_cache('service', 'sha256:new-buildkit')
     assert d.events == []                                       # same BuildKit: the cache is reused
     response = TestClient(build_full_app(p, g)).post('/v1/apps/service/build-cache', json={})
-    assert response.json() == {'deleted': True} and 'hertogs-app-service-buildcache' not in d.volumes
+    assert response.json() == {'deleted': True} and 'mcp-hosting-app-service-buildcache' not in d.volumes
 
 
 def test_caches_are_evicted_least_recently_used_and_a_full_disk_refuses_the_build(tmp_path, monkeypatch):
     p, _, r, d = seeded(tmp_path)
     for app, used in (('alpha', 100), ('beta', 200)):
-        d.ensure_volume(f'hertogs-app-{app}-buildcache', backup=False, labels={'be.hertogs.buildcache':app})
+        d.ensure_volume(f'mcp-hosting-app-{app}-buildcache', backup=False, labels={'mcp-hosting-workspace.buildcache':app})
         p.db.set_setting('build-cache-used:' + app, used)
-    d.volume_usage = lambda: [{'Name': 'hertogs-app-alpha-buildcache', 'Labels':{'be.hertogs.buildcache':'alpha'}, 'UsageData': {'Size': 40 * 1024**3}},
-                              {'Name': 'hertogs-app-beta-buildcache', 'Labels':{'be.hertogs.buildcache':'beta'}, 'UsageData': {'Size': 30 * 1024**3}}]
+    d.volume_usage = lambda: [{'Name': 'mcp-hosting-app-alpha-buildcache', 'Labels':{'mcp-hosting-workspace.buildcache':'alpha'}, 'UsageData': {'Size': 40 * 1024**3}},
+                              {'Name': 'mcp-hosting-app-beta-buildcache', 'Labels':{'mcp-hosting-workspace.buildcache':'beta'}, 'UsageData': {'Size': 30 * 1024**3}}]
     r.meter.refresh(wait=True)
     r.image_builds._make_room('service')                         # 70 GB of caches, budget 60 GB
-    assert 'hertogs-app-alpha-buildcache' not in d.volumes and 'hertogs-app-beta-buildcache' in d.volumes
+    assert 'mcp-hosting-app-alpha-buildcache' not in d.volumes and 'mcp-hosting-app-beta-buildcache' in d.volumes
     p.db.set_setting('quotas', {**p.db.get_setting('quotas'), 'build_min_free_gb': 10**9})
     with pytest.raises(ValueError, match='Not enough free space on the Docker disk'):
         r.image_builds._make_room('service')
@@ -554,7 +554,7 @@ def test_platform_activity_shows_deploys_operations_and_gpu_apps_without_payload
     p, g, r, d = seeded(tmp_path)
     op = add_operation(p, kind='image-build', status='running')
     p.db.audit('ai', 'runtime.submit', {'app':'service','version':'new','note':'private content'})
-    component = next(c for c in d.containers.values() if c['Labels'].get('be.hertogs.component'))
+    component = next(c for c in d.containers.values() if c['Labels'].get('mcp-hosting-workspace.component'))
     component['HostConfig']['DeviceRequests'] = [{'Driver':'nvidia'}]
     component['State'] = 'running'
     client = TestClient(build_narrow_app(p, g))
@@ -578,7 +578,7 @@ def test_a_slow_disk_is_measured_less_often(tmp_path):
 
 def test_development_storage_counts_in_the_cached_budget(tmp_path):
     p, g, r, d = seeded(tmp_path)
-    d.volume_usage = lambda: [{'Name':'hertogs-app-service-data', 'UsageData':{'Size':100}}]
+    d.volume_usage = lambda: [{'Name':'mcp-hosting-app-service-data', 'UsageData':{'Size':100}}]
     d.writable_size = lambda name: 200
     r.meter.refresh(wait=True)
     stored = r.meter.app('service')
@@ -593,7 +593,7 @@ def test_development_storage_counts_in_the_cached_budget(tmp_path):
 def test_storage_warning_is_given_once_and_again_only_after_dropping_back(tmp_path):
     p, _, r, d = seeded(tmp_path)
     size = {'bytes': int(0.5 * 1024**3)}
-    d.volume_usage = lambda: [{'Name': 'hertogs-app-service-data', 'UsageData': {'Size': size['bytes']}}]
+    d.volume_usage = lambda: [{'Name': 'mcp-hosting-app-service-data', 'UsageData': {'Size': size['bytes']}}]
     def warnings():
         return [json.loads(row['detail'])['level'] for row in reversed(p.db.audit_log()) if row['action'] == 'storage.warning']
     for gib, expected in ((0.5, []), (0.85, [80]), (0.86, [80]), (0.78, [80]), (0.82, [80]),   # hovering: no repeat
@@ -641,7 +641,7 @@ def test_app_call_runs_only_reviewed_actions_within_the_owners_permission(tmp_pa
     sent = []
     plain = d.exec
     def exec_(name, cmd, **kw):
-        if len(cmd) == 6 and 'x-hertogs-caller' in cmd[2]:
+        if len(cmd) == 6 and 'x-mcp-hosting-caller' in cmd[2]:
             sent.append((name, cmd[3], cmd[4], cmd[5]))
             return ExecResult(0, json.dumps({'status': 200, 'content_type': 'application/json', 'body': '[]'}), '')
         return plain(name, cmd, **kw)

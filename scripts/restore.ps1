@@ -8,7 +8,7 @@
     volume), optionally restores the workspace folders, and starts the stack
     again. Your .env must be the one that was used when the backup was made.
 .PARAMETER Backup
-    Path of a hertogs-YYYYMMDD-HHMMSS folder. Without it you pick from a list.
+    Path of a mcp-hosting-YYYYMMDD-HHMMSS folder. Without it you pick from a list.
 .PARAMETER IncludeWorkspaceFolders
     Also extract the saved workspace folders (apps, projects, ...) over the
     current ones. Files added since the backup are kept.
@@ -27,8 +27,8 @@ if ($Backup) { $Backup = (Resolve-Path -LiteralPath $Backup).ProviderPath }
 . (Join-Path $PSScriptRoot "lib\common.ps1")
 Set-Location (Get-ProjectRoot)
 
-$HelperImage = "hertogs/platform:local"
-$WorkspaceVolume = "hertogs-ai-workspace-data"
+$HelperImage = "mcp-hosting-workspace/platform:local"
+$WorkspaceVolume = "mcp-hosting-workspace-data"
 
 Assert-DockerRunning
 if (-not (Test-DockerImage $HelperImage)) { throw "Image $HelperImage not found. Run 'docker compose build' first." }
@@ -39,7 +39,7 @@ if (-not $Backup) {
         throw "BACKUP_DIR is not set or missing. Pass -Backup <folder>."
     }
     $list = @(Get-ChildItem -LiteralPath $backupDir -Directory |
-        Where-Object { $_.Name -match '^hertogs-\d{8}-\d{6}$' -and (Test-Path -LiteralPath (Join-Path $_.FullName "manifest.json")) } |
+        Where-Object { $_.Name -match '^mcp-hosting-\d{8}-\d{6}$' -and (Test-Path -LiteralPath (Join-Path $_.FullName "manifest.json")) } |
         Sort-Object Name -Descending)
     if ($list.Count -eq 0) { throw "No backups found in $backupDir" }
     for ($i = 0; $i -lt $list.Count; $i++) { Write-Host ("[{0}] {1}" -f ($i + 1), $list[$i].Name) }
@@ -71,6 +71,9 @@ $volumeFiles = @(Get-ChildItem -LiteralPath $Backup -Filter "volume-*.tar.gz" -F
 $volumes = foreach ($file in $volumeFiles) {
     $name = $file.Name.Substring(7, $file.Name.Length - 7 - 7)
     if ($name -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]+$') { throw "Unexpected file name $($file.Name)" }
+    if ($name -notmatch '^mcp-hosting-[A-Za-z0-9_.-]+$') {
+        throw "Backup volume '$name' belongs to a different Docker namespace. Use the checkout that created the backup."
+    }
     [pscustomobject]@{ Volume = $name; File = $file.Name }
 }
 $workspaceArchive = "workspace-folders.tar.gz"
@@ -144,10 +147,10 @@ try {
     foreach ($item in $volumes) {
         Write-Host "Restoring $($item.Volume) ..."
         if (-not (Test-DockerVolume $item.Volume)) {
-            $created = Invoke-Native docker @("volume", "create", "--label", "be.hertogs.backup=true", $item.Volume)
+            $created = Invoke-Native docker @("volume", "create", "--label", "mcp-hosting-workspace.backup=true", $item.Volume)
             if ($created.ExitCode -ne 0) { throw "Creating volume $($item.Volume) failed" }
         }
-        $staging = "hertogs-restore-staging-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+        $staging = "mcp-hosting-restore-staging-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
         [void](Invoke-Native docker @("volume", "create", $staging))
         $result = Invoke-Helper -Mounts @("$($item.Volume):/data", "${Backup}:/backup:ro", "${staging}:/staging") `
             -Script "restore-volume.sh" -ScriptArgs @($item.File)

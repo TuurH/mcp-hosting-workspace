@@ -18,7 +18,7 @@ Assert-DockerRunning
 
 Write-Host "Waiting for the containers to become healthy (up to 3 minutes)..."
 $deadline = (Get-Date).AddMinutes(3)
-foreach ($container in "hertogs-ai-workspace", "hertogs-files", "hertogs-deployer", "hertogs-admin") {
+foreach ($container in "mcp-hosting-workspace", "mcp-hosting-files", "mcp-hosting-deployer", "mcp-hosting-admin") {
     do {
         $health = (Invoke-Native docker @("inspect", "--format", "{{.State.Health.Status}}", $container)).Output -join ""
         if ($health -eq "healthy") { break }
@@ -43,7 +43,7 @@ $files = Invoke-Native docker @("compose", "exec", "-T", "files", "python", "-c"
     "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=3).read().decode())")
 Report "files service answers" ($files.ExitCode -eq 0) ($files.Output -join "")
 
-foreach ($container in "hertogs-pomerium", "hertogs-static", "hertogs-ai-workspace-tunnel") {
+foreach ($container in "mcp-hosting-pomerium", "mcp-hosting-static", "mcp-hosting-workspace-tunnel") {
     $state = (Invoke-Native docker @("inspect", "--format", "{{.State.Status}}", $container)).Output -join ""
     Report "$container is running" ($state -eq "running") "($state)"
 }
@@ -51,7 +51,7 @@ foreach ($container in "hertogs-pomerium", "hertogs-static", "hertogs-ai-workspa
 $deployer = Invoke-Native docker @("compose", "exec", "-T", "workspace", "curl", "-fsS", "http://deployer:8090/healthz")
 Report "workspace reaches the deployer" ($deployer.ExitCode -eq 0) ($deployer.Output -join "")
 
-$platform = Invoke-Native docker @("exec", "hertogs-deployer", "python", "-m", "hertogs_platform.deployer.cli", "status")
+$platform = Invoke-Native docker @("exec", "mcp-hosting-deployer", "python", "-m", "mcp_hosting_platform.deployer.cli", "status")
 $status = $null
 if ($platform.ExitCode -eq 0) { try { $status = ($platform.Output -join "`n") | ConvertFrom-Json } catch { $status = $null } }
 Report "deployer can use Docker (gaming mode)" ($null -ne $status -and $status.docker -eq "ok") `
@@ -72,10 +72,10 @@ else {
     Report "admin page requires a login" ($adminCode -eq "403" -or $adminCode -eq "421") "(HTTP $adminCode)"
 }
 
-$ports = (Invoke-Native docker @("ps", "--filter", "label=com.docker.compose.project=hertogs-ai-workspace", "--format", "{{.Names}} {{.Ports}}")).Output |
+$ports = (Invoke-Native docker @("ps", "--filter", "label=com.docker.compose.project=mcp-hosting-workspace", "--format", "{{.Names}} {{.Ports}}")).Output |
     Where-Object { $_ -match "->" }
 Report "no infrastructure host ports published" (-not $ports) ($ports -join "; ")
-$appPorts = (Invoke-Native docker @("ps", "--filter", "label=be.hertogs.app", "--format", "{{.Names}} {{.Ports}}")).Output |
+$appPorts = (Invoke-Native docker @("ps", "--filter", "label=mcp-hosting-workspace.app", "--format", "{{.Names}} {{.Ports}}")).Output |
     Where-Object { $_ -match "->" }
 if ($appPorts) {
     Write-Host "Managed app listeners (compare each with its Network and GPU grants):"
