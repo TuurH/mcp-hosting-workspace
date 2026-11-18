@@ -203,7 +203,7 @@ services:
       - pomerium-config:/pomerium
       - static-logs:/logs:ro
       - control:/control
-      - admin-socket:/run/mcp-hosting
+      - admin-socket:/run/mcp-hosting-workspace
     tmpfs:
       - /tmp:size=256m
     labels:
@@ -302,7 +302,7 @@ services:
       ADMIN_MAX_UPLOAD_GB: ${ADMIN_MAX_UPLOAD_GB:-50}
       WORKSPACE_ROOT: /workspace
     volumes:
-      - admin-socket:/run/mcp-hosting
+      - admin-socket:/run/mcp-hosting-workspace
       # The file manager: the admin page can read and change everything in /workspace.
       - workspace-data:/workspace
     tmpfs:

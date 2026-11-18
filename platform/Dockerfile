@@ -17,8 +17,8 @@ RUN apt-get update && apt-get upgrade -y \
 
 RUN groupadd --gid 1000 app \
     && useradd --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin app \
-    && mkdir -p /data /srv/sites /pomerium /control /logs /run/mcp-hosting /workspace /scratch \
-    && chown 1000:1000 /data /srv/sites /pomerium /control /run/mcp-hosting /workspace /scratch
+    && mkdir -p /data /srv/sites /pomerium /control /logs /run/mcp-hosting-workspace /workspace /scratch \
+    && chown 1000:1000 /data /srv/sites /pomerium /control /run/mcp-hosting-workspace /workspace /scratch
 
 COPY requirements.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade 'pip>=26.2,<27' 'setuptools>=84.1,<85' \
