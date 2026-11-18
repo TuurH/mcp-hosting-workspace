@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Changes in {{ name }}</h1>
+<p>From <code>{{ diff["from"] or "nothing" }}</code> to <code>{{ diff["to"] }}</code>.
+  Everything below was written by the AI and is shown as plain text.</p>
+<p><a href="/apps/{{ name }}/source?version={{ diff['to'] | urlencode }}">Browse the exact submitted source</a>. Large or binary files may have no inline diff.</p>
+<section class="cards">
+  <div class="card"><h2>Added ({{ diff.added | length }})</h2><ul>{% for f in diff.added %}<li><code>{{ f.path }}</code> {{ f.bytes | bytes }}</li>{% endfor %}</ul></div>
+  <div class="card"><h2>Changed ({{ diff.changed | length }})</h2><ul>{% for f in diff.changed %}<li><code>{{ f.path }}</code> {{ f.bytes | bytes }}</li>{% endfor %}</ul></div>
+  <div class="card"><h2>Removed ({{ diff.removed | length }})</h2><ul>{% for f in diff.removed %}<li><code>{{ f.path }}</code></li>{% endfor %}</ul></div>
+</section>
+{% for path, text in diff.text_diffs.items() %}
+  <h3><code>{{ path }}</code></h3>
+  <pre class="diff">{{ text }}</pre>
+{% endfor %}
+{% if diff.pending and diff.pending == diff['to'] %}
+<form method="post" action="/apps/{{ name }}/do/release?{{ csrf_q }}" class="row">
+  <input type="hidden" name="version" value="{{ diff['to'] }}">
+  <button class="primary" {% if release_checks | selectattr("done", "equalto", false) | list %}disabled title="Complete the pending-release prerequisites on the app page first."{% endif %}>Release reviewed revision</button>
+</form>
+{% if release_checks | selectattr("done", "equalto", false) | list %}<p><a href="/apps/{{ name }}#release-heading">Complete the pending-release checklist</a> before releasing this revision.</p>{% endif %}
+{% endif %}
+<p><a href="/apps/{{ name }}">Back to {{ name }}</a></p>
+{% endblock %}

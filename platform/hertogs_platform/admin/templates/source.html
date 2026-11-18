@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Source · {{ name }}{% endblock %}
+{% block content %}
+<h1>Source of {{ name }}</h1>
+<p>Exact submitted revision <code>{{ source.version }}</code>. Code is displayed as plain text.</p>
+{% if source.path is defined %}
+<h2><code>{{ source.path }}</code></h2>
+<p><a href="/apps/{{ name }}/source?version={{ source.version | urlencode }}">All files in this revision</a></p>
+{% if source.offset %}<p>Showing bytes starting at {{ source.offset }}. <a href="/apps/{{ name }}/source?version={{ source.version | urlencode }}&amp;path={{ source.path | urlencode }}">Start of file</a></p>{% endif %}
+<pre class="source-code">{{ source.content }}</pre>
+{% if source.truncated %}<p class="flash warn">This file continues. <a href="/apps/{{ name }}/source?version={{ source.version | urlencode }}&amp;path={{ source.path | urlencode }}&amp;offset={{ source.next_offset }}">Read the next part</a> before approving.</p>{% endif %}
+{% else %}
+<table><thead><tr><th>File</th><th>Size</th></tr></thead><tbody>
+{% for file in source.files %}<tr><td><a href="/apps/{{ name }}/source?version={{ source.version | urlencode }}&amp;path={{ file.path | urlencode }}">{{ file.path }}</a></td><td>{{ file.bytes | bytes }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+<p><a href="/apps/{{ name }}">Back to app controls</a></p>
+{% endblock %}

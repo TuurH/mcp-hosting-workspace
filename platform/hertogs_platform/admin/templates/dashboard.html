@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Application overview</h1>
+<p class="muted">Review releases, access and workspace health from one place.</p>
+<section class="cards compact">
+  <div class="card">
+    <h2>Gaming mode</h2>
+    <p class="big {{ 'warn' if status.gaming != 'off' else '' }}">{{ status.gaming }}</p>
+    {% if status.gaming == "off" %}
+      <form method="post" action="/gaming/on?{{ csrf_q }}"><button>Turn on</button></form>
+    {% else %}
+      <form method="post" action="/gaming/off?{{ csrf_q }}"><button class="primary">Turn off</button></form>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>Workspace GPU</h2>
+    <p class="big">{{ "allowed" if status.workspace_gpu_allowed else "cooperative block" }}</p>
+    <p class="muted">Change on the <a href="/settings">settings</a> page.</p>
+  </div>
+  <div class="card">
+    <h2>Waiting on you</h2>
+    {% if status.waiting %}
+    <ul class="plain">{% for item in status.waiting %}<li><a href="/apps/{{ item.app }}{{ '#versions' if item.pending_version and not item.asks else '' }}">{{ item.app }}</a>:
+      {% if item.pending_version %}new version to release{% endif %}{% if item.pending_version and item.asks %}, {% endif %}{% if item.asks %}{{ item.asks }} thing{{ 's' if item.asks != 1 else '' }} the AI asks for{% endif %}</li>{% endfor %}</ul>
+    {% else %}<p class="big">Nothing</p>{% endif %}
+    <p class="muted">Every ask is shown on the page of its app, where you apply or dismiss it.</p>
+  </div>
+  <div class="card">
+    <h2>Docker disk</h2>
+    {% set disk = status.storage.disk if status.storage else none %}
+    {% if disk %}{% set used_percent = ((disk.total_bytes - disk.free_bytes) * 100 / disk.total_bytes) | round | int if disk.total_bytes else 0 %}
+    <p class="big {{ 'warn' if used_percent >= 85 else '' }}">{{ disk.free_bytes | bytes }} free</p>
+    <div class="meter {{ 'warn' if used_percent >= 85 else '' }}" role="img" aria-label="{{ used_percent }} percent of the Docker disk is used"><span data-width="{{ used_percent }}"></span></div>
+    <p class="muted">of {{ disk.total_bytes | bytes }} inside Docker's own disk · measured {{ status.storage.measured_at | ago }}</p>
+    {% else %}<p class="muted">Not measured yet.</p>{% endif %}
+    <p><a href="/images">Unused images and clean-up</a></p>
+  </div>
+</section>
+
+{% if status.workspace_frozen %}
+<p class="flash error">The workspace is frozen to stop GPU work{% if status.gaming_error %} ({{ status.gaming_error }}){% endif %}. Frozen programs keep their GPU memory until they are killed: see the <a href="/gpu">GPU page</a>.</p>
+{% elif status.gaming_error %}
+<p class="flash error">Gaming mode: {{ status.gaming_error }}. See the <a href="/gpu">GPU page</a>.</p>
+{% endif %}
+{% if status.route_problems %}
+<p class="flash error">The last routing check failed: {{ status.route_problems | join("; ") }}. Some routes may be held at their last checked access. A successful anonymous check does not verify signed-in permissions. Check <code>docker compose logs pomerium</code>.</p>
+{% endif %}
+{% for app_name, problem in (status.site_problems or {}).items() %}
+<p class="flash error">{{ app_name }}: {{ problem }}</p>
+{% endfor %}
+{% if status.routing %}<section class="card"><h2>Routing status</h2><p>Requested configuration: {{ 'applied' if status.routing.in_sync else 'waiting / held' }} · Current anonymous check: {{ 'passed' if status.routing.anonymous_check_current else 'pending or failed' }}</p><p class="muted">Signed-in audience checks require validation with owner, invited and uninvited accounts. Anonymous checks alone do not verify those permissions.</p>{% if status.routing.held_hosts %}<p>Held hosts: {{ status.routing.held_hosts | join(', ') }}</p>{% endif %}</section>{% endif %}
+<h1>Apps</h1>
+{% if not apps %}
+<p class="muted">No apps yet. Ask ChatGPT or Claude to build one: it appears here visible only to you. Static output can go live immediately; container releases wait for your review.</p>
+{% else %}
+<table class="responsive-table">
+  <thead><tr><th>App</th><th>Visibility</th><th>Environment</th><th>Runtime state</th><th>Storage</th><th>Pending version</th><th>Updated</th></tr></thead>
+  <tbody>
+  {% for app in apps %}
+    <tr>
+      <td data-label="App"><div><a href="/apps/{{ app.name }}">{{ app.name }}</a><br><span class="muted">{{ app.url }}</span></div></td>
+      <td data-label="Visibility"><span class="stage {{ app.stage }}">{{ STAGE_LABELS[app.stage] }}</span></td>
+      <td data-label="Environment">{{ app.environment }}</td><td data-label="Runtime state">{{ app.lifecycle | default("online" if app.online else "offline") }}</td>
+      <td data-label="Storage">{% if app.storage and app.storage.percent is not none %}<span class="{{ 'error-text' if app.storage.percent >= 100 else 'warn' if app.storage.percent >= 80 else '' }}">{{ app.storage.percent }}% of budget</span>{% elif app.storage and app.storage.used_bytes is not none %}{{ app.storage.used_bytes | bytes }}{% else %}-{% endif %}</td>
+      <td data-label="Pending">{{ "waiting for you" if app.pending_version else "-" }}</td>
+      <td data-label="Updated">{{ app.updated_at | time }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if status.access_lockdown %}
+<section class="card"><h2>Emergency access lock is active</h2><p>All apps are owner-only. Saved visibility and production protection are retained.</p><form method="post" action="/visibility/restore?{{ csrf_q }}" data-confirm-click="Restore every app’s saved sharing and public access?"><button>Restore saved visibility</button></form></section>
+{% endif %}
+<details class="danger-zone">
+  <summary>Emergency access lock</summary>
+  <p>Temporarily makes every app owner-only. Production protection, versions and saved sharing lists are retained. Raw TCP/UDP listeners and development sessions with incoming ports are stopped.</p>
+  <form method="post" action="/killswitch?{{ csrf_q }}">
+    <label>Type <code>make everything private</code> <input name="confirm" autocomplete="off"></label>
+    <button class="danger">Make everything private</button>
+  </form>
+</details>
+{% endblock %}

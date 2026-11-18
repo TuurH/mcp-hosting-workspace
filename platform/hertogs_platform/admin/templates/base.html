@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf }}">
+<meta name="admin-owner" content="{{ owner }}">
+<title>{% block title %}MCP Hosting Workspace admin{% endblock %}</title>
+<link rel="stylesheet" href="/static/admin.css">
+<script src="/static/admin.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to content</a>
+<header>
+  <a class="brand" href="/">MCP Hosting Workspace</a>
+  <nav aria-label="Main navigation">
+    <a href="/" {% if path_now == "/" or path_now.startswith("/apps/") %}class="active"{% endif %}>Apps</a>
+    <a href="/people" {% if path_now.startswith("/people") %}class="active"{% endif %}>People</a>
+    <a href="/workspace" {% if path_now.startswith("/workspace") %}class="active"{% endif %}>Workspace</a>
+    <a href="/files" {% if path_now.startswith("/files") %}class="active"{% endif %}>Files</a>
+    <a href="/gpu" {% if path_now.startswith("/gpu") %}class="active"{% endif %}>GPU</a>
+    <a href="/images" {% if path_now.startswith("/images") %}class="active"{% endif %}>Disk</a>
+    <a href="/settings" {% if path_now.startswith("/settings") %}class="active"{% endif %}>Settings</a>
+    <a href="/audit" {% if path_now.startswith("/audit") %}class="active"{% endif %}>Audit</a>
+  </nav>
+  <span class="who">{{ owner }}</span>
+</header>
+<main id="main-content" tabindex="-1" {% if live_page %}data-live-page="{{ path_now }}"{% endif %}>
+{% if msg %}<p class="flash ok">{{ msg }}</p>{% endif %}
+{% if err %}<p class="flash error">{{ err }}</p>{% endif %}
+{% block content %}{% endblock %}
+</main>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+</body>
+</html>

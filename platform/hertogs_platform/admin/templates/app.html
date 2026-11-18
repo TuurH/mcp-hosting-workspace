@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% from "asks.html" import ask_list with context %}
+{% block title %}{{ app.name }} · MCP Hosting Workspace{% endblock %}
+{% block content %}
+<h1>{{ app.name }} <span class="stage {{ app.stage }}">{{ STAGE_LABELS[app.stage] }}</span></h1>
+<p><a href="{{ app.url }}" rel="noreferrer">{{ app.url }}</a> · {{ app.lifecycle | default("online" if app.online else "offline") }} · {{ app.kind }}</p>
+{% if app.problem %}<p class="flash error">{{ app.problem }}</p>{% endif %}
+
+<nav class="section-nav" aria-label="App sections"><a href="#access">Access</a><a href="#versions">Versions</a>{% if app.kind == "runtime" %}<a href="#runtime">Runtime</a><a href="#capabilities">Network & GPU</a>{% if app.builds %}<a href="#image-builds">Image builds</a>{% endif %}<a href="#development">Development</a><a href="#exports">Data exports</a>{% endif %}{% if app.kind == "runtime" and app.operations %}<a href="#operations">Operations</a>{% endif %}<a href="#permissions">AI permissions</a><a href="#log-access">Log access</a><a href="#credentials">Credentials</a></nav>
+<p><strong>Environment:</strong> {{ app.environment }} · <strong>Effective visibility:</strong> {{ STAGE_LABELS.get(app.effective_visibility, app.effective_visibility) }}</p>
+{% set ask_count = ask_items | length %}
+{% if ask_count %}<p class="flash wait">The AI asks for {{ ask_count }} thing{{ "s" if ask_count != 1 else "" }} on this page:
+{% for item in ask_items %}<a href="#ask-{{ item.id }}">{{ item.kind | replace("_", " ") }}</a>{{ "" if loop.last else ", " }}{% endfor %}.</p>{% endif %}
+
+{% if active_operation %}{% set op = active_operation %}
+<section class="card operation-live" id="operation" data-live-operation="/apps/{{ app.name }}/operations/{{ op.id }}/log" data-live-label="{{ OPERATION_LABELS.get(op.kind, op.kind) }}">
+  <h2>{{ OPERATION_LABELS.get(op.kind, op.kind) }} in progress</h2>
+  <p aria-live="polite"><strong data-live-phase>{{ op.phase or (op.status | capitalize) }}</strong> <span data-live-detail>{{ op.phase_detail or "" }}</span> · <span data-live-time>{{ op.elapsed_seconds | duration }}</span>{% if op.result.version %} · revision <code>{{ op.result.version }}</code>{% endif %}</p>
+  <pre class="terminal" data-live-log tabindex="0" aria-label="Operation log"></pre>
+  <p class="muted"><span data-live-note>The log follows the work every two seconds. The page updates automatically and keeps unsaved forms.</span> <a href="/apps/{{ app.name }}/operations/{{ op.id }}/log.txt" rel="noreferrer">Open the full log</a></p>
+</section>
+{% endif %}
+
+{% if app.pending_version %}<section class="card release-checklist" aria-labelledby="release-heading"><h2 id="release-heading">Pending release: next steps</h2>
+<p><a href="/apps/{{ app.name }}/diff?to={{ app.pending_version | urlencode }}">Review changes</a> · <a href="/apps/{{ app.name }}/source?version={{ app.pending_version | urlencode }}">Browse the exact source</a>. Releasing replaces the live code; rollback does not restore app data.</p>
+{% for revision in app.revisions %}{% if revision.role == "pending" %}
+<p><strong>Change to the app's data, as stated by the AI:</strong>
+{% if revision.data_change == "irreversible" %}<span class="error-text">irreversible</span>: once released, an earlier revision may not work with the changed data. Export or back up the data first if you may want to go back.
+{% elif revision.data_change == "compatible" %}compatible: earlier revisions keep working with the data this one writes.
+{% elif revision.data_change == "none" %}none.
+{% else %}not stated. Assume the data may change.{% endif %}</p>{% endif %}{% endfor %}
+{% if release_checks %}<ul class="checklist">{% for check in release_checks %}<li><span class="{{ 'ok' if check.done else 'warn' }}">{{ 'Ready' if check.done else 'Needed' }}</span> · <a href="#{{ check.target }}">{{ check.label }}</a></li>{% endfor %}</ul>{% endif %}
+<p>When the prerequisites are ready, use <a href="#versions">Release pending version</a>. {% if not app.online %}This app is offline; releasing keeps it offline until you choose Bring online.{% endif %} {% if app.held_for_gaming %}Gaming mode holds this GPU app; it resumes when gaming ends.{% endif %}</p>
+</section>{% endif %}
+<section class="cards">
+  <div class="card">
+    <h2 id="access">Who can open it</h2>
+    {{ ask_list(asks.access) }}
+    <form method="post" action="/apps/{{ app.name }}/stage?{{ csrf_q }}" class="stack">
+      <input type="hidden" name="live_version" value="{{ app.live_version or '' }}">
+      {% for stage, label in STAGE_LABELS.items() %}
+        <label><input type="radio" name="stage" value="{{ stage }}" {% if app.stage == stage %}checked{% endif %}> {{ label }}</label>
+      {% endfor %}
+      <fieldset>
+        <legend>For Shared: people and groups</legend>
+        {% for person in people %}
+          <label><input type="checkbox" name="people" value="{{ person.email }}" {% if person.email in app.people %}checked{% endif %}> {{ person.email }}</label>
+        {% else %}<p class="muted">Add people on the <a href="/people">people</a> page first.</p>{% endfor %}
+        {% for group in groups %}
+          <label><input type="checkbox" name="groups" value="{{ group.name }}" {% if group.name in app.groups %}checked{% endif %}> group {{ group.name }}</label>
+        {% endfor %}
+      </fieldset>
+      <label>For Public, type <code>{{ app.name }}.{{ domain }}</code> <input name="confirm" autocomplete="off"></label>
+      <button class="primary">Save visibility</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 id="versions">Versions</h2>
+    {{ ask_list(asks.versions) }}
+    {% if app.kind == "runtime" and app.pending_version %}<form method="post" action="/apps/{{ app.name }}/do/preview?{{ csrf_q }}"><input type="hidden" name="version" value="{{ app.pending_version }}"><button>Start isolated web preview</button></form><p class="muted">Preview runs only the web component, with empty separate data and no credentials, outbound network, GPU or service ports. It does not validate production workers or data-dependent behavior.</p>{% endif %}
+    <dl>
+      <dt>Live</dt><dd><code>{{ app.live_version or "-" }}</code>{% if app.live_version %} · <a href="/apps/{{ app.name }}/source?version={{ app.live_version | urlencode }}">source</a>{% endif %}</dd>
+      <dt>Pending</dt><dd><code>{{ app.pending_version or "-" }}</code>
+        {% if app.pending_version %} · <a href="{{ app.preview_url }}" rel="noreferrer">preview</a> · <a href="/apps/{{ app.name }}/diff">changes</a> · <a href="/apps/{{ app.name }}/source?version={{ app.pending_version | urlencode }}">source</a>{% endif %}</dd>
+      <dt>Previous</dt><dd><code>{{ app.previous_version or "-" }}</code></dd>
+    </dl>
+    <div class="row">
+      {% if app.pending_version %}
+        <form method="post" action="/apps/{{ app.name }}/do/release?{{ csrf_q }}"><input type="hidden" name="version" value="{{ app.pending_version }}"><button class="primary" {% if release_checks | selectattr("done", "equalto", false) | list %}disabled title="Complete the pending-release checklist first."{% endif %}>Release pending version</button></form>
+        <form method="post" action="/apps/{{ app.name }}/do/discard?{{ csrf_q }}"><input type="hidden" name="version" value="{{ app.pending_version }}"><button>Discard</button></form>
+      {% endif %}
+      {% if app.previous_version %}
+        <form method="post" action="/apps/{{ app.name }}/do/rollback?{{ csrf_q }}" data-confirm-click="Go back to the previous revision? Code only: the app's data stays as the current version left it."><input type="hidden" name="version" value="{{ app.previous_version }}"><button>Roll back to previous version</button></form>
+      {% endif %}
+      {% if app.online %}
+        <form method="post" action="/apps/{{ app.name }}/do/stop?{{ csrf_q }}"><button>Take offline</button></form>
+      {% else %}
+        <form method="post" action="/apps/{{ app.name }}/do/start?{{ csrf_q }}"><button>Bring online</button></form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if app.kind == "runtime" %}<h2>Runtime output</h2><p>Visitor statistics are not collected here.</p><p><a href="/apps/{{ app.name }}/logs">Component output logs</a></p>{% else %}
+    <h2>Visitors (24 h)</h2>
+    <p class="big">{% if app.stats.partial %}at least {% endif %}{{ app.stats.requests_24h }} requests</p>
+    {% if app.stats.partial %}<p class="muted">Partial log coverage: older or larger logs exceeded the scan limit.</p>{% endif %}
+    <p class="muted">{{ app.stats.unique_visitors_24h }} visitor networks · {{ app.stats.bytes_24h | bytes }}</p>
+    <p><a href="/apps/{{ app.name }}/logs">Full log</a></p>{% endif %}
+  </div>
+</section>
+
+{% if app.revisions %}
+<section class="card" id="revisions"><h2>Kept revisions</h2>
+<p class="muted">{{ app.going_back }} The newest revisions keep their source; older ones are removed.</p>
+<table class="responsive-table"><thead><tr><th>Revision</th><th>Role</th><th>Uploaded</th><th>Data change</th><th>Image</th><th>Going back</th><th></th></tr></thead><tbody>
+{% for revision in app.revisions %}<tr>
+  <td data-label="Revision"><code title="{{ revision.version }}">{{ revision.version[:12] }}…</code> · <a href="/apps/{{ app.name }}/source?version={{ revision.version | urlencode }}">source</a></td>
+  <td data-label="Role">{{ revision.role }}</td>
+  <td data-label="Uploaded" class="nowrap">{{ revision.created_at | time }}</td>
+  <td data-label="Data change">{{ revision.data_change }}</td>
+  <td data-label="Image">{{ revision.image }}</td>
+  <td data-label="Going back">{{ revision.going_back if revision.role in ["previous", "older"] else "-" }}</td>
+  <td data-label="Action">{% if revision.role == "older" and revision.going_back not in ["not possible", "upload it again as a new version"] %}<form method="post" action="/apps/{{ app.name }}/do/restore?{{ csrf_q }}" data-confirm-click="Go back to revision {{ revision.version }}? Code only: the app's data stays as the current version left it."><input type="hidden" name="version" value="{{ revision.version }}"><button class="small">Restore</button></form>{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table></section>
+{% endif %}
+
+{% if app.kind == "runtime" %}
+<section id="runtime" class="card"><h2>Container runtime</h2>
+{% if storage %}
+<h3>Storage</h3>
+<p data-storage-summary class="{{ 'error-text' if storage.level == 'error' else 'warn' if storage.level == 'warn' else '' }}"><strong>{% if storage.total_bytes is not none %}{{ storage.total_bytes | bytes }}{% else %}Not measured yet{% endif %}</strong>{% if storage.budget_bytes %} of {{ storage.budget_bytes | bytes }} budget{% endif %}{% if storage.percent is not none %} ({{ storage.percent }}%){% endif %}{% if storage.level == 'error' %} · over budget{% elif storage.level == 'warn' %} · nearly full{% endif %}</p>
+<div data-storage-meter class="meter {{ storage.level }}" role="img" {% if storage.percent is none %}hidden{% endif %} aria-label="{{ storage.percent }} percent of the storage budget"><span data-width="{{ [storage.percent or 0, 100] | min }}"></span></div>
+<dl>
+  <dt>App data (/data)</dt><dd data-storage-part="data_bytes">{% if storage.data_bytes is not none %}{{ storage.data_bytes | bytes }}{% else %}not measured yet{% endif %}</dd>
+  <dt>Source volumes</dt><dd data-storage-part="source_volume_bytes">{% if storage.source_volume_bytes is not none %}{{ storage.source_volume_bytes | bytes }}{% else %}not measured yet{% endif %}</dd>
+  <dt>Preview data</dt><dd data-storage-part="preview_data_bytes">{% if storage.preview_data_bytes is not none %}{{ storage.preview_data_bytes | bytes }}{% else %}none or not measured{% endif %}</dd>
+  <dt>Kept revision sources</dt><dd data-storage-part="kept_sources_bytes">{{ storage.kept_sources_bytes | bytes }}</dd>
+  <dt>Development files</dt><dd data-storage-part="development_bytes">{% if storage.development_bytes is defined and storage.development_bytes is not none %}{{ storage.development_bytes | bytes }}{% else %}not measured yet{% endif %}</dd>
+  <dt>Build cache (not counted)</dt><dd data-storage-part="build_cache_bytes">{% if storage.build_cache_bytes is not none %}{{ storage.build_cache_bytes | bytes }}{% else %}none or not measured{% endif %}</dd>
+</dl>
+<div class="row"><span class="muted">Measured <span data-storage-measured>{{ storage.measured_at | ago }}</span>{% if storage.running %} · measuring now{% endif %}{% if storage.error %} · last measurement failed: {{ storage.error }}{% endif %}.</span>
+<button type="button" class="small" data-storage-refresh="{{ app.name }}">Measure now</button></div>
+<p class="muted">Sizes are measured in the background, about every ten minutes; this page never waits for it. The budget is a warning level, not a hard limit. Images, build cache and logs are not counted.</p>
+{% endif %}
+<h3>Components</h3>
+<p>CPU and memory are enforced per component. The same chosen limits apply to every component. Network and GPU access follow the owner grants below.</p>
+{% for component in app.runtime.components %}{% set mem_limit = component.limits.Memory or 0 %}{% set mem_used = component.memory_used %}
+{% set mem_percent = (mem_used * 100 / mem_limit) | round | int if mem_used is not none and mem_used is defined and mem_limit else none %}
+<p><strong>{{ component.name }}</strong> · {{ component.version }}{% if component.preview %} · preview{% endif %} · {{ component.state.Status }} · {{ component.limits.NanoCpus / 1000000000 }} CPU cores · memory {% if mem_percent is not none %}<span class="{{ 'warn' if mem_percent >= 85 else '' }}">{{ mem_used | bytes }} of {{ mem_limit | bytes }} ({{ mem_percent }}%{{ ', close to the limit' if mem_percent >= 85 else '' }})</span>{% else %}limit {{ mem_limit | bytes }}{% endif %}</p>{% else %}<p>No runtime containers yet.</p>{% endfor %}
+{% if app.runtime.last_out_of_memory %}{% set oom = app.runtime.last_out_of_memory %}<p class="flash error">Component <strong>{{ oom.component }}</strong> was stopped by the system for using more memory than its limit{% if oom.limit_bytes %} ({{ oom.limit_bytes | bytes }}){% endif %}, {{ oom.time | ago }} ({{ oom.time | time }}). Raise the memory limit below or make the app use less.</p>{% endif %}
+{% if app.live_version %}{% set limits = app.runtime.desired or app.manifests[app.live_version] %}
+<form method="post" action="/apps/{{ app.name }}/resources?{{ csrf_q }}" class="form-grid">
+<input type="hidden" name="version" value="{{ app.live_version }}">
+<label>CPU limit per component (cores)<input type="number" name="cpus" min="0.05" max="256" step="0.05" value="{{ limits.cpus }}" required></label>
+<label>Memory per component (MiB)<input type="number" name="memory_mb" min="32" max="2097152" step="1" value="{{ limits.memory_mb }}" required></label>
+<label>Storage budget for the app (GiB)<input type="number" name="storage_gb" min="0.1" max="100000" step="0.1" value="{{ limits.storage_gb }}" required></label>
+<button>Save container limits</button></form>{% endif %}
+{% for version, manifest in app.manifests.items() %}{% if manifest %}<details><summary>Manifest {{ version }}</summary><pre>{{ manifest | tojson(indent=2) }}</pre></details>{% endif %}{% endfor %}
+{% if app.operations %}<h3 id="operations">Operations</h3>
+<table class="responsive-table"><thead><tr><th>Action</th><th>Status</th><th>Started</th><th>Took</th><th>Revision</th><th>Result</th></tr></thead><tbody>
+{% for op in app.operations %}<tr data-operation-id="{{ op.id }}"><td data-label="Action">{{ OPERATION_LABELS.get(op.kind, op.kind | capitalize) }}</td><td data-label="Status" data-state="{{ op.status }}">{{ op.status | capitalize }}{% if op.phase %} · {{ op.phase }}{% endif %}</td><td data-label="Started" class="nowrap">{{ op.created_at | time }}</td><td data-label="Took" class="nowrap">{{ op.elapsed_seconds | duration }}</td><td data-label="Revision">{% if op.result.version %}<code title="{{ op.result.version }}">{{ op.result.version[:12] }}…</code>{% else %}-{% endif %}</td><td data-label="Result" data-result>{% if op.result.error %}{% if op.result.failed_phase %}Failed at “{{ op.result.failed_phase }}”: {% endif %}{{ op.result.error }}{% elif op.status == 'succeeded' %}Completed successfully.{% if op.result.destination %} <code>{{ op.result.destination }}</code> · <a href="/files?path=inbox">Open inbox</a>{% endif %}{% elif op.status == 'failed' %}Failed. Open the log before retrying.{% elif op.status == 'interrupted' %}Interrupted by a restart of the platform. Review this revision before retrying.{% else %}In progress: see the top of this page.{% endif %}{% if op.has_log %} · <a href="/apps/{{ app.name }}/operations/{{ op.id }}/log.txt" rel="noreferrer">log</a>{% endif %}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+</section>
+{% endif %}
+{% if app.kind == "runtime" %}{% include "app_extensions.html" %}{% else %}{{ ask_list((asks.capabilities or []) + (asks.development or []) + (asks.exports or [])) }}{% endif %}
+<section class="cards app-settings">
+  <div class="card" id="permission-settings">
+    <h2 id="permissions">Environment and AI permissions</h2>
+    <p class="muted">Save this card to apply its environment and AI permissions. Protection and log access have their own save button in the next card.</p>
+    <form method="post" action="/apps/{{ app.name }}/policy?{{ csrf_q }}" class="stack">
+      <input type="hidden" name="revision" value="{{ app.revision }}">
+      <label>Environment<select name="environment">{% for value in ["development","staging","production"] %}<option value="{{ value }}" {% if value == app.environment %}selected{% endif %}>{{ value | capitalize }}</option>{% endfor %}</select></label>
+      <p class="muted">This label is independent of visibility. Each grant below gives the AI continuing permission until you revoke it.</p>
+      {% for key,label in [("install_packages","Develop and install packages in the isolated app workspace"),("run_tests","Run platform web tests"),("restart","Start, stop and restart the live app"),("deploy","Release code updates within already approved capabilities and base image"),("delete","Delete this app")] %}<label><input type="checkbox" name="{{ key }}" {% if app.ai_permissions[key] %}checked{% endif %}> {{ label }}</label>{% endfor %}
+      {% if app.kind == "runtime" %}
+      <h3>Actions the AI may call in this app</h3>
+      {% if app.actions %}
+      <p class="muted">The live revision declares these actions. The AI can call only these, with these inputs, and only the kinds you tick. Nothing else of the app is reachable for it.</p>
+      <table class="responsive-table"><thead><tr><th>Action</th><th>Kind</th><th>Request</th><th>AI may call</th></tr></thead><tbody>
+      {% for action in app.actions %}<tr><td data-label="Action"><code>{{ action.name }}</code><br><span class="muted">{{ action.description }}</span></td><td data-label="Kind">{{ action.class }}</td><td data-label="Request"><code>{{ action.method }} {{ action.path }}</code></td><td data-label="AI may call">{{ "yes" if action.allowed else "no" }}</td></tr>{% endfor %}
+      </tbody></table>
+      {% if not app.actions_reviewed %}<p class="flash warn">The declared actions changed since you last released this app yourself. The AI cannot call any of them until you release a version from this page.</p>{% endif %}
+      {% else %}<p class="muted">The live revision declares no actions, so these three have no effect yet.</p>{% endif %}
+      {% for key,label in [("call_read","Call actions that only read"),("call_write","Call actions that add or change things"),("call_destructive","Call actions that delete or cannot be undone")] %}<label><input type="checkbox" name="{{ key }}" {% if app.ai_permissions[key] %}checked{% endif %}> {{ label }}</label>{% endfor %}
+      {% endif %}
+      <p class="muted">New images, Dockerfiles, credentials and broader network/GPU access still require review. Deleting an app retains its persistent data.</p>
+      <button class="primary">Save environment and AI permissions</button>
+    </form>
+  </div>
+
+  <div class="card" id="log-access">
+    <h2>Protection and log access</h2>
+    <p class="muted">This card saves only protection and log settings{% if app.kind == "static" %}, including automatic releases{% endif %}. Save environment and AI permissions in their own card.</p>
+    {{ ask_list(asks['log-access']) }}
+    <form method="post" action="/apps/{{ app.name }}/settings?{{ csrf_q }}" class="stack">
+      <label><input type="checkbox" name="protected" {% if app.protected %}checked{% endif %}> Production protection (default approval policy)</label>
+      <p class="muted">Sharing turns protection on; making the app private keeps it on. Explicit AI permissions above can delegate actions within approved bounds.</p>
+      <label>What the AI may read from {{ 'component output and build logs' if app.kind == 'runtime' else 'the visitor log' }}
+        <select name="log_access">
+          {% for mode in (["default", "off", "full"] if app.kind == "runtime" else ["default", "off", "stats", "masked", "full"]) %}
+            <option value="{{ mode }}" {% if app.log_access == mode %}selected{% endif %}>{{ mode }}</option>
+          {% endfor %}
+        {% if app.kind == "runtime" and app.log_access in ["stats", "masked"] %}<option value="{{ app.log_access }}" selected>{{ app.log_access }} (no component output)</option>{% endif %}</select>
+      </label>
+      {% if app.kind == "runtime" %}<p class="muted">Effective access: {{ app.effective_log_access | default(app.log_access) }}. Raw component output and the logs of builds and releases require full access. Masked, stats and off return none of them. Default access follows visibility; older output is excluded after returning to private visibility. Explicit full access includes older output for 24 hours.</p>{% else %}<p class="muted">Effective access: {{ app.effective_log_access | default(app.log_access) }}. "full" switches back after 24 hours.
+        "masked" and "stats" show the AI only the app's own pages and where visitors came from (the site,
+        not the page). The app's pages themselves run in visitors' browsers and can still collect and
+        signal what visitors type or who they are.</p>{% endif %}
+      {% if app.kind == "static" %}<label><input type="checkbox" name="auto_release" {% if app.auto_release %}checked{% endif %}> Release new versions without asking (not Public)</label>{% endif %}
+      <button class="primary">Save protection and log access</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 id="credentials">App credentials</h2>
+    {{ ask_list(asks.credentials) }}
+{% if app.kind == "runtime" %}<div id="credential-grants">{% for version in [app.pending_version, app.live_version] %}{% if version %}{% set manifest = app.manifests[version] %}
+{% if manifest.secrets %}<h3>Credential grants · {{ 'pending' if version == app.pending_version else 'live' }} revision</h3>
+<p><code>{{ version }}</code> · <a href="/apps/{{ app.name }}/source?version={{ version | urlencode }}">Review its source</a>. Grants apply only to this revision. All declared credentials are required to start it; previews receive none.</p>
+{% if version == app.live_version %}<p class="flash warn">Changing live grants takes the app offline before access is revoked. Bring it online after checking the required credentials.</p>{% endif %}
+<form method="post" action="/apps/{{ app.name }}/grants?{{ csrf_q }}" class="stack"><input type="hidden" name="version" value="{{ version }}">{% for name in manifest.secrets %}<label><input type="checkbox" name="secrets" value="{{ name }}" {% if name in app.grants[version] %}checked{% endif %}> {{ name }}</label>{% endfor %}<button>Save grants for this revision</button></form>
+{% endif %}{% endif %}{% endfor %}
+{% if app.live_version and app.online %}<form method="post" action="/apps/{{ app.name }}/do/restart?{{ csrf_q }}" data-confirm-click="Stop and restart this revision with its current credentials?" class="row"><input type="hidden" name="version" value="{{ app.live_version }}"><button>Apply credentials and restart</button></form><p class="muted">After rotating a key below, restart to replace the copy held by running processes.</p>{% endif %}
+</div>{% endif %}
+    {% if app.secrets %}
+    <table><tbody>
+      {% for s in app.secrets %}
+      <tr><td><code>{{ s.name }}</code></td><td>{{ "set" if s.has_value else "empty" }}</td>
+        <td><form method="post" action="/apps/{{ app.name }}/secrets/{{ s.name }}/delete?{{ csrf_q }}" data-confirm-click="Delete key {{ s.name }}?"><button class="small">Delete</button></form></td></tr>
+      {% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted">No keys.</p>{% endif %}
+    <form method="post" action="/apps/{{ app.name }}/secrets?{{ csrf_q }}" class="stack" autocomplete="off">
+      <label>Name <input name="name" placeholder="DISCORD_TOKEN" pattern="[A-Z][A-Z0-9_]*" required spellcheck="false"></label>
+      <label>Value <input name="value" type="password" autocomplete="new-password" required></label>
+      <button>Save key</button>
+      <p class="muted">Values are stored encrypted and never shown again. {% if app.kind == "static" %}Static pages cannot use app credentials.{% else %}Only versions with owner-approved grants receive these credentials. Code in a granted version can read them.{% endif %} Workspace tokens belong on the <a href="/workspace#tokens">Workspace page</a>.</p>
+    </form>
+  </div>
+</section>
+
+<details class="danger-zone">
+  <summary>Delete this app</summary>
+  {% if app.kind == "runtime" %}<p>Containers, stored versions and the build cache are removed. Persistent app data is retained in its Docker volume and backups.</p>{% endif %}
+  <form method="post" action="/apps/{{ app.name }}/remove?{{ csrf_q }}">
+    <label>Type <code>{{ app.name }}</code> <input name="confirm" autocomplete="off"></label>
+    <button class="danger">Delete {{ app.name }}</button>
+  </form>
+</details>
+{% endblock %}

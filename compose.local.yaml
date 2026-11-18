@@ -1,0 +1,34 @@
+# Local testing only: publishes the MCP server on 127.0.0.1:8000 WITHOUT
+# authentication (for MCP Inspector). In this mode the server refuses the public
+# hostname (HTTP 421), /healthz reports "insecure" and test-local.ps1 fails, but
+# stop the tunnel anyway: other containers can reach host ports through
+# host.docker.internal.
+#
+#   docker compose stop cloudflared
+#   docker compose -f compose.yaml -f compose.local.yaml up -d workspace
+#
+# The admin page can be tried the same way before Cloudflare Access is set up.
+# It then prints a login link (http://localhost:8088/local-login?...) to its
+# log that works once; open it, not 127.0.0.1. The session lasts 8 hours. The
+# browser sends that session cookie to every localhost port, so do not browse
+# other local services (such as the workspace on port 8000) at the same time:
+#
+#   docker compose -f compose.yaml -f compose.local.yaml up -d admin
+#   docker compose logs admin
+#
+# Return to normal with:
+#   docker compose up -d --force-recreate workspace admin cloudflared
+
+services:
+  workspace:
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      LOCAL_DEV_INSECURE: "true"
+
+  admin:
+    ports:
+      - "127.0.0.1:8088:8080"
+    environment:
+      ADMIN_LOCAL_DEV_INSECURE: "true"
+      ADMIN_LOCAL_TOKEN: ${ADMIN_LOCAL_TOKEN:-}

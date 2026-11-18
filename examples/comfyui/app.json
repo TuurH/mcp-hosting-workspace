@@ -1,0 +1,18 @@
+{
+  "dockerfile": "Dockerfile",
+  "memory_mb": 8192,
+  "cpus": 2,
+  "storage_gb": 40,
+  "capabilities": {
+    "gpu": true,
+    "network": {"dns": true, "tcp": [{"destination": "public", "ports": [443]}]}
+  },
+  "components": [
+    {
+      "name": "web", "kind": "web", "port": 8188, "data": true,
+      "startup_seconds": 180,
+      "command": ["sh", "-c", "mkdir -p /data/user /data/input /data/output /data/models && exec python /opt/ComfyUI/main.py --listen 0.0.0.0 --port 8188 --user-directory /data/user --input-directory /data/input --output-directory /data/output --extra-model-paths-config /app/model_paths.yaml"]
+    },
+    {"name": "models", "kind": "task", "data": true, "command": ["python", "/app/download_models.py"]}
+  ]
+}

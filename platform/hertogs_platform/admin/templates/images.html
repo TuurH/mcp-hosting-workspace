@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Disk · MCP Hosting Workspace{% endblock %}
+{% block content %}
+<h1>Disk and images</h1>
+<p class="muted">Docker keeps every image it ever built or downloaded until something removes it. The platform now removes the images of old app revisions by itself; this page shows what else is unused.</p>
+{% set disk = status.storage.disk if status.storage else none %}
+<section class="cards">
+  <div class="card">
+    <h2>Docker disk</h2>
+    {% if disk %}{% set used_percent = ((disk.total_bytes - disk.free_bytes) * 100 / disk.total_bytes) | round | int if disk.total_bytes else 0 %}
+    <p class="big {{ 'warn' if used_percent >= 85 else '' }}">{{ disk.free_bytes | bytes }} free</p>
+    <div class="meter {{ 'warn' if used_percent >= 85 else '' }}" role="img" aria-label="{{ used_percent }} percent of the Docker disk is used"><span data-width="{{ used_percent }}"></span></div>
+    <p class="muted">of {{ disk.total_bytes | bytes }} · measured {{ status.storage.measured_at | ago }}. This is the disk inside Docker; the drive it lives on can be smaller or fuller.</p>
+    {% else %}<p class="muted">Not measured yet.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Images without a name</h2>
+    <p class="big">{{ report.untagged_count | default(0) }} · about {{ report.untagged_bytes | default(0) | bytes }}</p>
+    <p class="muted">Left behind by earlier builds. Nothing uses them.</p>
+    {% if report.untagged_count %}<form method="post" action="/images/cleanup?{{ csrf_q }}" data-confirm-click="Remove {{ report.untagged_count }} unused image(s) without a name?"><input type="hidden" name="action" value="untagged"><button class="primary">Remove them</button></form>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Docker's own build cache</h2>
+    <p class="muted">Used when you build images on this computer yourself (for example the platform's own image). App builds have their own cache per app, shown on each app page. Clearing this only makes your next build slower.</p>
+    <form method="post" action="/images/cleanup?{{ csrf_q }}" data-confirm-click="Clear Docker's own build cache?"><input type="hidden" name="action" value="host-cache"><button>Clear it</button></form>
+  </div>
+</section>
+{% if report.error %}<p class="flash error">{{ report.error }}</p>{% endif %}
+<h2>Unused images with a name</h2>
+<p class="muted">No container uses these and no kept app revision needs them. {{ report.note }} Removing a base image only means it is downloaded again when needed.</p>
+{% set named = report.unused | selectattr("tags") | list %}
+{% if named %}
+<table class="responsive-table"><thead><tr><th>Image</th><th>Size</th><th>Freed if removed (estimate)</th><th>Created</th><th></th></tr></thead><tbody>
+{% for image in named %}<tr>
+  <td data-label="Image">{% for tag in image.tags %}<code>{{ tag }}</code>{{ "" if loop.last else ", " }}{% endfor %}</td>
+  <td data-label="Size" class="nowrap">{{ image.bytes | bytes }}</td>
+  <td data-label="Freed if removed" class="nowrap">{{ image.unique_bytes | bytes }}</td>
+  <td data-label="Created" class="nowrap">{{ image.created | time }}</td>
+  <td data-label="Action"><form method="post" action="/images/cleanup?{{ csrf_q }}" data-confirm-click="Remove {{ image.tags | first }}?"><input type="hidden" name="action" value="image"><input type="hidden" name="image" value="{{ image.id }}"><button class="small">Remove</button></form></td>
+</tr>{% endfor %}
+</tbody></table>
+<p class="muted">Together about {{ report.tagged_bytes | bytes }}.</p>
+{% else %}<p class="muted">None.</p>{% endif %}
+{% endblock %}

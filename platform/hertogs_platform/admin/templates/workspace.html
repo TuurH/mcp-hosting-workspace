@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Workspace · MCP Hosting Workspace{% endblock %}
+{% block content %}
+<h1>Main workspace</h1>
+<p class="muted">Manage the environment used by ChatGPT and Claude commands and jobs.</p>
+<nav class="section-nav" aria-label="Workspace sections"><a href="#resources">Resources</a><a href="#tokens">Tokens</a><a href="/files">Files</a><a href="/gpu">GPU processes</a></nav>
+<section id="resources" class="card">
+<h2>Container resources</h2>
+<p>CPU cores and memory are enforced by Docker. Storage is a budget on a shared Docker disk; it is not a hard volume quota.</p>
+{% if resources.error %}<p class="flash error">{{ resources.error }}</p>{% endif %}
+{% if resources.available %}
+<div class="metrics">
+<div><span>Current CPU limit</span><strong>{{ resources.effective.cpus or 'unlimited' }} cores</strong></div>
+<div><span>Current memory limit</span><strong>{{ resources.effective.memory_gb or 'unlimited' }} GiB</strong><small>{{ resources.memory_used | bytes }} in use</small></div>
+<div><span>Workspace files</span><strong>{% if storage.partial %}at least {% endif %}{{ storage.used | bytes }}</strong><small>{% if storage.partial %}Partial scan{% else %}Includes caches, uploads and trash{% endif %}</small></div>
+<div><span>Shared disk free</span><strong>{{ storage.disk_free | bytes }}</strong><small>Shared with other containers and images</small></div>
+</div>
+{% if resources.gaming != 'off' %}<p class="flash warn">Gaming mode is active. The form edits normal limits; temporary gaming limits stay active.</p>{% endif %}
+<form method="post" action="/workspace/resources?{{ csrf_q }}" class="form-grid">
+<input type="hidden" name="container_id" value="{{ resources.container_id }}">
+<label>Normal CPU limit (cores)<input type="number" name="cpus" min="0.1" max="256" step="0.1" required value="{{ resources.normal.cpus or 8 }}"></label>
+<label>Normal memory limit (GiB)<input type="number" name="memory_gb" min="0.25" max="2048" step="0.25" required value="{{ resources.normal.memory_gb or 12 }}"></label>
+<label>Storage budget (GiB)<input type="number" name="storage_gb" min="1" max="100000" step="1" required value="{{ resources.desired.storage_gb or 100 }}"></label>
+<button class="primary">Save resource limits</button>
+</form>
+<p class="muted">Saved CPU and memory limits are reapplied after container recreation. Lowering memory below current use is refused. Storage usage is measured, not enforced by Docker Desktop.</p>
+{% if resources.desired.storage_gb and storage.used > resources.desired.storage_gb * 1073741824 %}<p class="flash warn">Workspace files exceed the saved storage budget. Review files, caches and trash.</p>{% endif %}
+{% endif %}
+</section>
+<section id="tokens" class="card">
+<h2>Workspace tokens</h2>
+<p>Add tokens here instead of sending their values through MCP. Values are encrypted in platform storage and are never returned by the management API.</p>
+<p class="flash warn">Workspace commands and the AI can read these tokens and send them to services. Use credentials intended for this workspace. Running jobs keep their previous copy until stopped and restarted.</p>
+{% if tokens %}
+<table class="responsive-table"><thead><tr><th>Environment name</th><th>Updated</th><th>Action</th></tr></thead><tbody>
+{% for token in tokens %}<tr><td data-label="Environment name"><code>{{ token.name }}</code></td><td data-label="Updated">{{ token.updated_at | time }}</td><td data-label="Action"><form method="post" action="/workspace/tokens/{{ token.name }}/delete?{{ csrf_q }}" data-confirm-click="Remove this token from new commands?"><button class="small">Remove</button></form></td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="muted">No workspace tokens configured.</p>{% endif %}
+<form method="post" action="/workspace/tokens?{{ csrf_q }}" class="form-grid" autocomplete="off">
+<label>Environment name<input name="name" placeholder="SERVICE_API_TOKEN" pattern="[A-Z][A-Z0-9_]{0,127}" required maxlength="128" spellcheck="false"></label>
+<label>Token value<input type="password" name="value" autocomplete="new-password" required maxlength="16384"></label>
+<button class="primary">Add or replace token</button>
+</form>
+<p class="muted">New commands can use the named environment variable. App credentials are configured separately on each app. System configuration names and prefixes are reserved (including HF_, PIP_, PYTHON and NVIDIA_). If a service expects a reserved name, use another token name and map it inside the command.</p>
+</section>
+{% endblock %}

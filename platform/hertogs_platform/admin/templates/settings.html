@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Platform settings</h1>
+<p class="muted">Set deployment budgets and defaults here. Edit running workspace limits on the <a href="/workspace">Workspace page</a>, and app container limits on each app.</p>
+<section class="cards">
+  <div class="card">
+    <h2>Application defaults and request limits</h2>
+    <p class="muted">CPU and memory defaults apply per runtime component. Storage fields are budgets, not Docker volume quotas. Unused images and the build cache are on the <a href="/images">Disk page</a>.</p>
+    <form method="post" action="/settings/quotas?{{ csrf_q }}" class="stack">
+      {% for key, value in settings.quotas.items() %}
+        <label>{{ QUOTA_LABELS.get(key, key) }} <input name="{{ key }}" value="{{ value }}" type="number" min="0" step="{{ 'any' if key in ['app_cpus', 'max_app_cpus', 'app_data_gb'] else '1' }}" required inputmode="decimal"></label>
+      {% endfor %}
+      <button class="primary">Save defaults and request limits</button>
+    </form>
+  </div>
+  <div class="card">
+    <h2>Gaming mode</h2>
+    <form method="post" action="/settings/gaming?{{ csrf_q }}" class="stack">
+      <label>Workspace CPUs while gaming <input type="number" min="0.1" step="0.1" required name="workspace_cpus" value="{{ settings.gaming.workspace_cpus }}"></label>
+      <label>Workspace memory (GiB) while gaming <input type="number" min="0.25" step="0.25" required name="workspace_memory_gb" value="{{ settings.gaming.workspace_memory_gb }}"></label>
+      <label>App CPUs while gaming <input type="number" min="0.05" max="256" step="0.05" required name="app_cpus" value="{{ settings.gaming.app_cpus }}"></label>
+      <label>Seconds GPU jobs get to stop <input type="number" min="0" step="1" required name="stop_grace_seconds" value="{{ settings.gaming.stop_grace_seconds }}"></label>
+      <label>Game programs (one .exe per line, for the automatic trigger)
+        <textarea name="games" rows="5">{{ settings.gaming.games | join("\n") }}</textarea></label>
+      <button class="primary">Save gaming settings</button>
+    </form>
+  </div>
+  <div class="card">
+    <h2>Workspace GPU</h2>
+    <form method="post" action="/settings/workspace_gpu_allowed?{{ csrf_q }}" class="stack">
+      <label><input type="checkbox" name="value" {% if settings.workspace_gpu_allowed %}checked{% endif %}> Let ChatGPT/Claude use the GPU (outside gaming mode)</label>
+      <button>Save workspace GPU policy</button>
+    </form>
+    <h2>Log access defaults</h2><p class="muted">Stats and masked modes describe static visitor logs. Container applications provide component output only with full access.</p>
+    <form method="post" action="/settings/log_access_defaults?{{ csrf_q }}" class="stack">
+      {% for stage, mode in settings.log_access_defaults.items() %}
+        <label>{{ STAGE_LABELS[stage] }}
+          <select name="{{ stage }}">{% for m in ["off", "stats", "masked", "full"] %}<option {% if m == mode %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>
+        </label>
+      {% endfor %}
+      <button>Save log defaults</button>
+    </form>
+  </div>
+</section>
+<section class="card"><h2>Popups</h2>
+<p>Every admin page shows a small popup when a build or release finishes, when the AI uploads a version or asks for something, and when an app runs out of storage budget or memory. They also work in a background tab.</p>
+<p><button type="button" data-enable-notifications>Also show them as Windows notifications</button> <span class="muted" data-notification-state></span></p>
+<p class="muted">Windows notifications appear only while an admin page is open in some tab, and only on this browser.</p></section>
+{% if status.gaming_detail %}
+<h2>Gaming mode log</h2>
+<ul class="log-list">{% for line in status.gaming_detail.log | reverse %}<li>{{ line.time | time }} · {{ line.message }}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

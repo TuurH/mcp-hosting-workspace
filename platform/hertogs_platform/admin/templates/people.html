@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>People</h1>
+<p class="muted">Only people listed here can be given access to Shared apps. They log in with their Google account at auth.{{ domain }}.</p>
+<table class="responsive-table">
+  <thead><tr><th>Email</th><th>Name</th><th>Groups</th><th></th></tr></thead>
+  <tbody>
+  {% for p in people %}
+  <tr><td data-label="Email">{{ p.email }}</td><td data-label="Name">{{ p.display_name }}</td>
+    <td data-label="Groups">
+      {% for g in groups %}
+      <form method="post" action="/people?{{ csrf_q }}" class="inline">
+        <input type="hidden" name="op" value="member"><input type="hidden" name="group" value="{{ g.name }}">
+        <input type="hidden" name="email" value="{{ p.email }}"><input type="hidden" name="member" value="{{ '0' if g.name in p.groups else '1' }}">
+        <button class="small {{ 'on' if g.name in p.groups else '' }}">{{ g.name }}</button>
+      </form>
+      {% endfor %}
+    </td>
+    <td data-label="Actions"><form method="post" action="/people?{{ csrf_q }}" data-confirm-click="Remove {{ p.email }} from every app?">
+      <input type="hidden" name="op" value="remove_person"><input type="hidden" name="email" value="{{ p.email }}">
+      <button class="small danger">Remove</button></form></td></tr>
+  {% else %}<tr><td colspan="4" class="muted">Nobody yet.</td></tr>{% endfor %}
+  </tbody>
+</table>
+<form method="post" action="/people?{{ csrf_q }}" class="row" autocomplete="off">
+  <input type="hidden" name="op" value="add_person">
+  <label>Email <input name="email" type="email" required></label>
+  <label>Name <input name="display_name"></label>
+  <button class="primary">Add person</button>
+</form>
+
+<h2>Groups</h2>
+<ul>
+  {% for g in groups %}
+  <li><strong>{{ g.name }}</strong>: {{ g.members | join(", ") or "no members" }}
+    <form method="post" action="/people?{{ csrf_q }}" class="inline" data-confirm-click="Delete group {{ g.name }}?">
+      <input type="hidden" name="op" value="remove_group"><input type="hidden" name="name" value="{{ g.name }}">
+      <button class="small">Delete</button></form></li>
+  {% else %}<li class="muted">No groups.</li>{% endfor %}
+</ul>
+<form method="post" action="/people?{{ csrf_q }}" class="row">
+  <input type="hidden" name="op" value="add_group">
+  <label>Group name <input name="name" placeholder="family" pattern="[a-z][a-z0-9_-]*" required></label>
+  <button>Add group</button>
+</form>
+<p class="muted">Removing someone updates access rules for their next HTTP request. An existing WebSocket can remain open; take the app offline to close its runtime connections immediately. Check routing status after changing access.</p>
+{% endblock %}

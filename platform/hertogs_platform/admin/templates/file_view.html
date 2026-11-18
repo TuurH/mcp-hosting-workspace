@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ info.name }}</h1>
+<p class="muted">/workspace/{{ info.path }} · {{ info.size | bytes }} · changed {{ info.modified | time }}</p>
+<p><a class="button" href="/files/raw?path={{ info.path | urlencode }}">Download</a>
+   <a href="/files?path={{ info.path.rpartition('/')[0] | urlencode }}">Back to the folder</a></p>
+{% if info.kind == "image" %}
+  <img class="preview" src="/files/raw?path={{ info.path | urlencode }}&amp;inline=1" alt="{{ info.name }}">
+{% elif info.kind == "text" %}
+  {% if info.truncated %}<p class="muted">Showing the first 1 MB.</p>{% endif %}
+  <pre class="file">{{ info.text }}</pre>
+{% else %}
+  <p class="muted">No preview for this kind of file. Download it to open it.</p>
+{% endif %}
+{% endblock %}

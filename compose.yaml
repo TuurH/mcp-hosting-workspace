@@ -1,0 +1,426 @@
+name: hertogs-ai-workspace
+
+# Network layout (see docs/DESIGN.md):
+#   edge-mcp      cloudflared <-> workspace   (internet + home network for the AI shell)
+#   edge-files    cloudflared <-> files       (internal, no internet)
+#   edge-admin    cloudflared <-> admin       (internet for Cloudflare's signing keys)
+#   edge-proxy    cloudflared <-> pomerium    (internet for Google login)
+#   files-mint    workspace   <-> files       (internal, link minting only)
+#   deployer-api  workspace   <-> deployer    (internal, the AI's narrow API)
+#   platform      deployer, pomerium, static  (internal)
+# The admin page reaches the deployer's full API through a unix socket on the
+# admin-socket volume, not over a network.
+# cloudflared has a fixed address on each edge network so services can trust
+# its forwarded headers. Infrastructure publishes no host ports; managed app
+# TCP/UDP listeners are separate, explicit owner grants.
+
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  init: true
+
+services:
+  # Provision with: docker compose --profile tools pull builder-image
+  builder-image:
+    profiles: [tools]
+    image: moby/buildkit:v0.35.0-rootless
+    entrypoint: [buildctl]
+    command: [--version]
+  workspace:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CUDA_BASE_IMAGE: ${CUDA_BASE_IMAGE:-nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04}
+        AI_UID: "1000"
+        AI_GID: "1000"
+    image: hertogs/ai-workspace-mcp:local
+    container_name: hertogs-ai-workspace
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+
+    environment:
+      WORKSPACE_ROOT: /workspace
+      MCP_SERVER_NAME: ${MCP_SERVER_NAME:-MCP Hosting Workspace}
+      PUBLIC_MCP_URL: ${PUBLIC_MCP_URL:-https://mcp.${PLATFORM_DOMAIN:-example.com}}
+      PUBLIC_MCP_HOST: ${PUBLIC_MCP_HOST:-mcp.${PLATFORM_DOMAIN:-example.com}}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-https://chatgpt.com,https://chat.openai.com,https://claude.ai,https://claude.ai/,https://claude.com}
+      FORWARDED_ALLOW_IPS: 10.204.1.2
+
+      CF_ACCESS_ENABLED: ${CF_ACCESS_ENABLED:-false}
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      CF_ACCESS_ALLOWED_EMAILS: ${CF_ACCESS_ALLOWED_EMAILS:-}
+      CF_ACCESS_JWT_LEEWAY_SECONDS: ${CF_ACCESS_JWT_LEEWAY_SECONDS:-60}
+      # Only compose.local.yaml may turn this on; never from .env.
+      LOCAL_DEV_INSECURE: "false"
+
+      FILES_MINT_URL: http://files:8081
+      FILES_MINT_TOKEN: ${FILES_MINT_TOKEN:-}
+      DEPLOYER_URL: http://deployer:8090
+      DEPLOYER_API_TOKEN: ${DEPLOYER_API_TOKEN:-}
+      CONTROL_FILE: /control/state.json
+      WORKSPACE_SECRETS_FILE: /run/workspace-secrets/environment.json
+
+      DEFAULT_SYNC_TIMEOUT_SECONDS: ${DEFAULT_SYNC_TIMEOUT_SECONDS:-180}
+      MAX_SYNC_TIMEOUT_SECONDS: ${MAX_SYNC_TIMEOUT_SECONDS:-1800}
+      MAX_TOOL_OUTPUT_CHARS: ${MAX_TOOL_OUTPUT_CHARS:-120000}
+      MAX_COMMAND_LOG_BYTES: ${MAX_COMMAND_LOG_BYTES:-52428800}
+      MAX_JOB_LOG_BYTES: ${MAX_JOB_LOG_BYTES:-262144000}
+      MAX_IMPORT_BYTES: ${MAX_IMPORT_BYTES:-2147483648}
+      MAX_WRITE_FILE_BYTES: ${MAX_WRITE_FILE_BYTES:-10485760}
+      MAX_DOWNLOAD_TTL_SECONDS: ${MAX_DOWNLOAD_TTL_SECONDS:-86400}
+      MAX_PARALLEL_COMMANDS: ${MAX_PARALLEL_COMMANDS:-4}
+
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+    volumes:
+      - workspace-data:/workspace
+      - control:/control:ro
+      - workspace-secrets:/run/workspace-secrets:ro
+
+    # Memory and swap limits are equal so the container never swaps.
+    shm_size: ${WORKSPACE_SHM_SIZE:-4gb}
+    mem_limit: ${WORKSPACE_MEMORY_LIMIT:-12g}
+    memswap_limit: ${WORKSPACE_MEMORY_LIMIT:-12g}
+    cpus: ${WORKSPACE_CPU_LIMIT:-8}
+    pids_limit: ${WORKSPACE_PIDS_LIMIT:-2048}
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+    networks:
+      - edge-mcp
+      - files-mint
+      - deployer-api
+
+  files:
+    <<: *hardened
+    build:
+      context: platform
+    image: hertogs/platform:local
+    container_name: hertogs-files
+    restart: unless-stopped
+    command: ["python", "-m", "hertogs_platform.files"]
+    user: "1000:1000"
+    environment:
+      WORKSPACE_ROOT: /workspace
+      FILES_DATA_DIR: /data
+      PUBLIC_FILES_URL: ${PUBLIC_FILES_URL:-https://files.${PLATFORM_DOMAIN:-example.com}}
+      FILES_MINT_TOKEN: ${FILES_MINT_TOKEN:-}
+      # Only the files-mint network may mint links (cloudflared shares edge-files).
+      FILES_MINT_ALLOWED_CLIENTS: 10.204.5.0/28
+      MAX_DOWNLOAD_TTL_SECONDS: ${MAX_DOWNLOAD_TTL_SECONDS:-86400}
+    volumes:
+      - workspace-data:/workspace:ro
+      - files-data:/data
+    tmpfs:
+      - /tmp:size=16m
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - edge-files
+      - files-mint
+
+  # One-shot at every start: gives the platform volumes to uid 1000 (the deployer
+  # and admin user), also when another container created a volume first.
+  volume-init:
+    image: hertogs/platform:local
+    build:
+      context: platform
+    user: "0:0"
+    network_mode: none
+    restart: "no"
+    entrypoint: ["sh", "-c"]
+    command: ["chown 1000:1000 /v/deployer-data /v/sites /v/pomerium-config /v/control /v/admin-socket /v/workspace-secrets /v/workspace /v/build-scratch"]
+    volumes:
+      - deployer-data:/v/deployer-data
+      - build-scratch:/v/build-scratch
+      - sites:/v/sites
+      - pomerium-config:/v/pomerium-config
+      - control:/v/control
+      - admin-socket:/v/admin-socket
+      - workspace-secrets:/v/workspace-secrets
+      - workspace-data:/v/workspace
+
+  # The only container with the Docker socket. The AI reaches its narrow API
+  # (deployer-api network, bearer token); the admin page its full API (unix
+  # socket on the admin-socket volume).
+  deployer:
+    <<: *hardened
+    image: hertogs/platform:local
+    container_name: hertogs-deployer
+    restart: unless-stopped
+    command: ["python", "-m", "hertogs_platform.deployer"]
+    user: "1000:1000"
+    # Docker Desktop's socket is root:root 0660 inside containers.
+    group_add: ["${DOCKER_SOCKET_GID:-0}"]
+    environment:
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-example.com}
+      PLATFORM_OWNER_EMAIL: ${PLATFORM_OWNER_EMAIL:-}
+      DEPLOYER_API_TOKEN: ${DEPLOYER_API_TOKEN:-}
+      DEPLOYER_SECRETS_KEY: ${DEPLOYER_SECRETS_KEY:-}
+      ADMIN_URL: https://admin.${PLATFORM_DOMAIN:-example.com}
+      WORKSPACE_CONTAINER: hertogs-ai-workspace
+      HELPER_IMAGE: hertogs/platform:local
+      RESERVED_APP_NAMES: ${RESERVED_APP_NAMES:-}
+      # Build workers hand their image to the deployer through this volume: each
+      # worker gets one directory of it, the deployer reads the result directly.
+      BUILD_SCRATCH_VOLUME: hertogs-build-scratch
+      BUILD_SCRATCH_DIR: /scratch
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - deployer-data:/data
+      - build-scratch:/scratch
+      - workspace-secrets:/data/workspace-secrets
+      - sites:/srv/sites
+      - pomerium-config:/pomerium
+      - static-logs:/logs:ro
+      - control:/control
+      - admin-socket:/run/hertogs
+    tmpfs:
+      - /tmp:size=256m
+    labels:
+      be.hertogs.backup.pre: "python -m hertogs_platform.deployer.cli snapshot-db"
+    mem_limit: 512m
+    memswap_limit: 512m
+    # Two cores: one may be busy streaming a large image while the other answers pages.
+    cpus: 2
+    pids_limit: 256
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - deployer-api
+      - platform
+
+  # Login and routing for every app on *.example.com. Its config file is written
+  # by the deployer and hot-reloaded. Not read-only: it unpacks its embedded
+  # Envoy binary at startup.
+  pomerium:
+    image: pomerium/pomerium:v0.34.1
+    container_name: hertogs-pomerium
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: ["--config", "/pomerium/config.yaml"]
+    environment:
+      SHARED_SECRET: ${POMERIUM_SHARED_SECRET:-}
+      COOKIE_SECRET: ${POMERIUM_COOKIE_SECRET:-}
+      SIGNING_KEY: ${POMERIUM_SIGNING_KEY:-}
+      IDP_PROVIDER: google
+      IDP_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      IDP_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    volumes:
+      - pomerium-config:/pomerium:ro
+      - pomerium-data:/data
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
+    pids_limit: 512
+    depends_on:
+      deployer:
+        condition: service_healthy
+    networks:
+      edge-proxy: {}
+      platform: {}
+
+  # Serves every static app's files; only Pomerium and the deployer reach it.
+  static:
+    image: caddy:2.11.9-alpine
+    container_name: hertogs-static
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    # The caddy binary carries this file capability; without it exec fails.
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ./static/Caddyfile:/etc/caddy/Caddyfile:ro
+      - sites:/srv/sites:ro
+      - static-logs:/logs
+    tmpfs:
+      - /data:size=16m
+      - /config:size=16m
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 1
+    pids_limit: 128
+    depends_on:
+      deployer:
+        condition: service_started
+    networks:
+      - platform
+
+  # admin.example.com, behind Cloudflare Access (owner only).
+  admin:
+    <<: *hardened
+    image: hertogs/platform:local
+    container_name: hertogs-admin
+    restart: unless-stopped
+    command: ["python", "-m", "hertogs_platform.admin"]
+    user: "1000:1000"
+    environment:
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-example.com}
+      ADMIN_PUBLIC_HOST: admin.${PLATFORM_DOMAIN:-example.com}
+      PLATFORM_OWNER_EMAIL: ${PLATFORM_OWNER_EMAIL:-}
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      ADMIN_CF_ACCESS_AUD: ${ADMIN_CF_ACCESS_AUD:-}
+      ADMIN_CSRF_KEY: ${ADMIN_CSRF_KEY:-}
+      ADMIN_MAX_UPLOAD_GB: ${ADMIN_MAX_UPLOAD_GB:-50}
+      WORKSPACE_ROOT: /workspace
+    volumes:
+      - admin-socket:/run/hertogs
+      # The file manager: the admin page can read and change everything in /workspace.
+      - workspace-data:/workspace
+    tmpfs:
+      - /tmp:size=64m
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
+    depends_on:
+      deployer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - edge-admin
+
+  cloudflared:
+    <<: *hardened
+    image: cloudflare/cloudflared:2026.11.0
+    container_name: hertogs-ai-workspace-tunnel
+    restart: unless-stopped
+    # Metrics/diagnostics only on loopback: the other containers on the edge
+    # networks must not reach them.
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    networks:
+      edge-mcp:
+        ipv4_address: 10.204.1.2
+      edge-files:
+        ipv4_address: 10.204.2.2
+      edge-admin:
+        ipv4_address: 10.204.3.2
+      edge-proxy:
+        ipv4_address: 10.204.4.2
+
+volumes:
+  workspace-secrets:
+    # Decrypted delivery cache, recreated from the encrypted deployer database.
+    name: hertogs-workspace-secrets
+  workspace-data:
+    name: hertogs-ai-workspace-data
+  files-data:
+    # Not backed up: download links expire within a day.
+    name: hertogs-files-data
+  deployer-data:
+    name: hertogs-deployer-data
+    labels:
+      be.hertogs.backup: "true"
+  build-scratch:
+    # Not backed up: holds an image only while its build is being imported.
+    name: hertogs-build-scratch
+  sites:
+    name: hertogs-sites
+    labels:
+      be.hertogs.backup: "true"
+  pomerium-config:
+    name: hertogs-pomerium-config
+  pomerium-data:
+    name: hertogs-pomerium-data
+  static-logs:
+    name: hertogs-static-logs
+  control:
+    name: hertogs-control
+  admin-socket:
+    name: hertogs-admin-socket
+
+networks:
+  edge-mcp:
+    name: hertogs-edge-mcp
+    driver: bridge
+    ipam:
+      config:
+        # Dynamic addresses come from .8-.15 so cloudflared's fixed .2 is always free.
+        - subnet: 10.204.1.0/28
+          gateway: 10.204.1.1
+          ip_range: 10.204.1.8/29
+  edge-files:
+    name: hertogs-edge-files
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.204.2.0/28
+          gateway: 10.204.2.1
+          ip_range: 10.204.2.8/29
+  files-mint:
+    name: hertogs-files-mint
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.204.5.0/28
+          gateway: 10.204.5.1
+  edge-admin:
+    name: hertogs-edge-admin
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.204.3.0/28
+          gateway: 10.204.3.1
+          ip_range: 10.204.3.8/29
+  edge-proxy:
+    name: hertogs-edge-proxy
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.204.4.0/28
+          gateway: 10.204.4.1
+          ip_range: 10.204.4.8/29
+  deployer-api:
+    name: hertogs-deployer-api
+    driver: bridge
+    internal: true
+  platform:
+    name: hertogs-platform
+    driver: bridge
+    internal: true

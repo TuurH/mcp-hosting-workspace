@@ -1,0 +1,22 @@
+# Copy to %UserProfile%\.wslconfig, then run "wsl --shutdown" in PowerShell
+# (this restarts Docker Desktop and every container).
+#
+# Sized for 32 GB RAM, an i5 10th gen (6 cores / 12 threads) and gaming on the
+# same PC. Without this file WSL caps itself at 50% of RAM (16 GB here), which
+# is lower than the old 24 GB workspace limit and a likely cause of Windows
+# slowing down while Whisper ran on the GPU.
+#
+# Check your thread count with:
+#   (Get-CimInstance Win32_Processor).NumberOfLogicalProcessors
+# and keep processors= two below it.
+
+[wsl2]
+memory=18GB
+processors=10
+swap=4GB
+
+[experimental]
+# Give unused Linux memory back to Windows quickly.
+autoMemoryReclaim=dropCache
+# Let the virtual disk shrink when files are deleted.
+sparseVhd=true

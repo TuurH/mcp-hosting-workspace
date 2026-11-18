@@ -1,0 +1,23 @@
+{# What the AI asked for, shown in the section of the app page where it is decided. #}
+{% set ASK_TITLES = {"stage": "change who can open this app", "start": "bring this app online", "stop": "take this app offline",
+  "remove": "delete this app", "log_access": "log access", "secret": "a credential", "capabilities": "network or GPU access",
+  "development": "a development workspace", "data_export": "a data export", "rollback": "go back to an earlier revision"} %}
+{% macro ask_list(items) %}
+{% for item in items or [] %}
+<article class="request risk-{{ item.summary.risk }}" id="ask-{{ item.id }}">
+  <h3>The AI asks: {{ ASK_TITLES.get(item.kind, item.kind) }}</h3>
+  <p class="summary">{{ item.summary.text }}</p>
+  {% if item.kind in ['capabilities','development','data_export'] %}<details open><summary>Exact requested permissions and bounds</summary><pre>{{ item.payload | tojson(indent=2) }}</pre></details>{% endif %}
+  {% if item.kind == "stage" %}<p><a href="{{ app.url }}" rel="noreferrer">Open the app before you decide</a></p>{% endif %}
+  {% if item.kind == "rollback" and item.payload.version %}<p><a href="/apps/{{ app.name }}/diff?to={{ item.payload.version | urlencode }}">Compare with the live version</a> · <a href="/apps/{{ app.name }}/source?version={{ item.payload.version | urlencode }}">source of that revision</a></p>{% endif %}
+  {% if item.note %}<blockquote class="claim"><strong>Note from the AI (unverified):</strong> {{ item.note }}</blockquote>{% endif %}
+  <form method="post" action="/requests/{{ item.id }}/decide?{{ csrf_q }}" class="row" autocomplete="off">
+    {% if item.kind == "secret" %}<label>Value <input name="value" type="password" autocomplete="new-password"></label>{% endif %}
+    {% if item.summary.confirm %}<label>Type <code>{{ item.summary.confirm }}</code> <input name="confirm"></label>{% endif %}
+    <button name="decision" value="reject">Dismiss</button>
+    <button name="decision" value="approve" class="primary">Apply</button>
+  </form>
+  <p class="muted">Asked {{ item.created_at | time }}. The description is worked out by the platform; the AI's note may be wrong.</p>
+</article>
+{% endfor %}
+{% endmacro %}

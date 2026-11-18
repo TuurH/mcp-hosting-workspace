@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ "Component output" if logs.mode == "runtime-output" else "Visitor log" }}: {{ name }}</h1>
+<p class="muted">Owner view of retained, bounded logs. {{ logs.note }}</p>
+{% if logs.stats %}
+<p>{{ logs.stats.requests_24h }} requests in 24 h · statuses {{ logs.stats.status_24h }} · {{ logs.stats.unique_visitors_24h }} visitor networks</p>
+{% endif %}
+{% if logs.mode == "runtime-output" %}
+{% for e in logs.entries %}<section class="card"><h2>{{ e.component }} · {{ e.version }}</h2><h3>Standard output</h3><pre class="log-output">{{ e.stdout or "No output." }}</pre><h3>Standard error</h3><pre class="log-output">{{ e.stderr or "No errors." }}</pre></section>{% else %}<p>No component output yet.</p>{% endfor %}
+{% else %}
+<table class="log responsive-table">
+  <thead><tr><th>Time</th><th>IP</th><th>Country</th><th>Request</th><th>Status</th><th>Size</th><th>Browser</th><th>Referrer</th></tr></thead>
+  <tbody>
+  {% for e in (logs.entries or []) | reverse %}
+    <tr><td data-label="Time">{{ e.time | time }}</td><td data-label="IP">{{ e.client_ip }}</td><td data-label="Country">{{ e.country }}</td><td data-label="Request"><code>{{ e.method }} {{ e.uri }}</code></td>
+      <td data-label="Status">{{ e.status }}</td><td data-label="Size">{{ e.bytes | bytes }}</td><td class="ua" data-label="Browser">{{ e.user_agent }}</td><td class="ua" data-label="Referrer">{{ e.referer }}</td></tr>
+  {% else %}<tr><td colspan="8" class="muted">No visits in the last week.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

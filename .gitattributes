@@ -1,0 +1,8 @@
+# Shell scripts and Python run inside Linux containers: keep LF even on Windows checkouts.
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yaml text eol=lf
+Caddyfile text eol=lf
+LICENSE text eol=lf
+# PowerShell is fine either way; keep CRLF on Windows.
+*.ps1  text eol=crlf

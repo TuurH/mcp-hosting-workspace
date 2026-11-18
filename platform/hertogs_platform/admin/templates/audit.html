@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Audit log</h1>
+<table class="responsive-table">
+  <thead><tr><th>Time</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead>
+  <tbody>{% for a in audit %}<tr><td data-label="Time">{{ a.time | time }}</td><td data-label="Who">{{ a.actor }}</td><td data-label="Action">{{ a.action }}</td><td data-label="Detail"><code>{{ a.detail }}</code></td></tr>{% endfor %}</tbody>
+</table>
+{% endblock %}

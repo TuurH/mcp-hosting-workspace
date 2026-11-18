@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+workspace/*
+!workspace/.gitkeep
+__pycache__/
+*.pyc
+workspace-backup-*.tar.gz

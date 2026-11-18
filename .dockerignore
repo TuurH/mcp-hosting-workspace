@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+workspace/*
+!workspace/.gitkeep
+__pycache__
+*.pyc
+*.zip
+.github
+docs
+platform
+static
+tests
+compose*.yaml
+.env.example
