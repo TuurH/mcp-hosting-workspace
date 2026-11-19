@@ -1,6 +1,6 @@
 # One image for the platform services: files, deployer, admin, and the helper
 # containers used by backups and gaming mode.
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
