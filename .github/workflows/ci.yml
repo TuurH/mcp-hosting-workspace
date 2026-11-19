@@ -11,7 +11,7 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -25,7 +25,7 @@ jobs:
   platform-image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build platform image
         run: docker build -t mcp-hosting-workspace/platform:local platform
       - name: Files container integration test
@@ -62,7 +62,7 @@ jobs:
   powershell-scripts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Parse every PowerShell script (PowerShell 7)
         shell: pwsh
         run: |
@@ -83,7 +83,7 @@ jobs:
   windows-powershell:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Parse every PowerShell script (Windows PowerShell 5.1)
         shell: powershell
         run: |
