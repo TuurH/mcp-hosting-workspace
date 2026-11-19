@@ -11,8 +11,8 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install test dependencies
@@ -25,7 +25,7 @@ jobs:
   platform-image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build platform image
         run: docker build -t mcp-hosting-workspace/platform:local platform
       - name: Files container integration test
@@ -48,7 +48,7 @@ jobs:
           node tests/integration/admin_live.cjs
       - name: Upload UI previews
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: admin-ui-${{ github.event_name }}
           path: ui-artifacts/*.png
@@ -62,7 +62,7 @@ jobs:
   powershell-scripts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Parse every PowerShell script (PowerShell 7)
         shell: pwsh
         run: |
@@ -83,7 +83,7 @@ jobs:
   windows-powershell:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Parse every PowerShell script (Windows PowerShell 5.1)
         shell: powershell
         run: |
