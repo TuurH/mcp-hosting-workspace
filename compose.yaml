@@ -324,7 +324,7 @@ services:
 
   cloudflared:
     <<: *hardened
-    image: cloudflare/cloudflared:2026.11.0
+    image: cloudflare/cloudflared:2026.11.1
     container_name: mcp-hosting-workspace-tunnel
     restart: unless-stopped
     # Metrics/diagnostics only on loopback: the other containers on the edge
