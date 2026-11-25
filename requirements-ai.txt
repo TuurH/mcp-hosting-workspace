@@ -18,7 +18,7 @@ faster-whisper>=1.1,<2
 
 # Hugging Face / local AI
 transformers>=5.23.0,<6
-accelerate>=1.8,<2
+accelerate>=1.16.0,<2
 huggingface-hub>=0.33,<2
 safetensors>=0.5,<1
 sentence-transformers>=5,<6
