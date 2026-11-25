@@ -38,7 +38,7 @@ yt-dlp>=2025.6
 
 # Security floors for dependencies shared by the numerical and notebook stack.
 filelock>=4.2.1,<5
-soupsieve>=4,<5
+soupsieve>=4.1.3,<5
 tornado>=6.6.1,<7
 nbconvert>=7.17.2,<8
 msgpack>=1.2.4,<2
