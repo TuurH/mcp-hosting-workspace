@@ -24,7 +24,7 @@ services:
   # Provision with: docker compose --profile tools pull builder-image
   builder-image:
     profiles: [tools]
-    image: moby/buildkit:v0.35.0-rootless
+    image: moby/buildkit:v0.35.1-rootless
     entrypoint: [buildctl]
     command: [--version]
   workspace:
